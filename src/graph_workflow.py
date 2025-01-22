@@ -5,6 +5,7 @@
 # - Includes steps for combining promising models
 # - Tracks how models relate to each other
 
+
 from typing import Dict, List, TypedDict, Annotated, Optional
 from langgraph.graph import Graph, StateGraph
 from langchain_core.messages import BaseMessage
@@ -12,8 +13,8 @@ from langchain_openai import ChatOpenAI
 import operator
 from enum import Enum
 import logging
-from dataclasses import dataclass
 import networkx as nx
+from dataclasses import dataclass
 from .core import ModelState
 from .knowledge_graph import CognitiveKnowledgeGraph
 from .transformations import ThoughtTransformations
@@ -27,49 +28,73 @@ class AgentState(TypedDict):
     messages: List[BaseMessage]
     next_step: str
     metrics: Dict
+    thought_history: List[ModelState]  # Track sequence of thoughts
+    active_thoughts: List[ModelState]  # Currently active thoughts
 
 class ModelDiscoveryGraph:
+    """Manages the discovery process combining MCTS exploration with Graph of Thoughts"""
     def __init__(self, knowledge_graph: CognitiveKnowledgeGraph):
+        # Core components initialization
         self.kg = knowledge_graph
         self.llm = ChatOpenAI(
             model="gpt-4-turbo-preview",
             temperature=0.7,
         )
-        # Graph structure for tracking thoughts
-        self.thought_graph = nx.DiGraph()
         self.transformations = ThoughtTransformations(self.llm)
         
-        # Init metrics structure
+        # Graph structures
+        self.workflow_graph = nx.DiGraph()  # For workflow steps
+        self.thought_graph = nx.DiGraph()   # For thought relationships
+        
+        # Configuration
+        self.max_active_thoughts = 10
+        self.aggregation_threshold = 0.7
+        self.refinement_threshold = 0.5
+        
+        # Initialize metrics structure
         self.default_metrics = {
             'scores': [],
             'model_complexity': [],
             'iterations': [],
             'exploration_paths': [],
-            'thought_volumes': [],  # GoT metric
-            'thought_latencies': [] # GoT metric
+            'thought_volumes': [],    # GoT metric
+            'thought_latencies': [],  # GoT metric
+            'aggregation_counts': [], # Track thought combinations
+            'refinement_counts': []   # Track thought improvements
         }
 
     async def run_workflow(self, state: AgentState) -> AgentState:
-        """Run workflow steps manually to avoid recursion"""
+        """Execute the complete workflow with GoT enhancements"""
         try:
+            # Initialize thought tracking if first run
+            if 'thought_history' not in state:
+                state['thought_history'] = []
+            if 'active_thoughts' not in state:
+                state['active_thoughts'] = []
+
             # Execute workflow steps sequentially
             state = await self.query_knowledge_node(state)
             state = await self.generate_hypothesis_node(state)
             
-            # GoT operations, update!
-            state = await self.aggregate_thoughts_node(state)
-            state = await self.refine_thought_node(state)
+            # GoT: Try thought aggregation if enough good thoughts
+            good_thoughts = [t for t in state['active_thoughts'] 
+                           if getattr(t, 'score', 0) > self.aggregation_threshold]
+            if len(good_thoughts) >= 3:
+                state = await self.aggregate_thoughts_node(state, good_thoughts)
             
+            # GoT: Try thought refinement if promising
+            if state['current_model'].score and state['current_model'].score > self.refinement_threshold:
+                state = await self.refine_thought_node(state)
+            
+            # Standard evaluation and updates
             state = await self.evaluate_model_node(state)
             state = await self.update_knowledge_node(state)
             state = await self.check_convergence_node(state)
             
-            # Compute GoT metrics
-            metrics = self.compute_thought_metrics(state["current_model"])
-            state["metrics"]["thought_volumes"].append(metrics["volume"])
-            state["metrics"]["thought_latencies"].append(metrics["latency"])
+            # Update thought tracking
+            self._update_thought_tracking(state)
             
-            # Check if we should continue or end :D
+            # Check if we should continue or end
             next_step = self.decide_next_step(state)
             if next_step == "complete":
                 state = await self.end_workflow_node(state)
@@ -80,61 +105,30 @@ class ModelDiscoveryGraph:
             logger.error(f"Error in workflow execution: {e}")
             return state
 
-    async def aggregate_thoughts_node(self, state: AgentState) -> AgentState:
-        """GoT: Node for aggregating multiple thoughts"""
+    def compute_thought_metrics(self, model: ModelState) -> Dict:
+        """Compute metrics for a thought, including volume and latency"""
         try:
-            # Get recent models from graph
-            recent_models = list(self.thought_graph.nodes())[-3:]  # Last 3 thoughts
-            if len(recent_models) > 1:
-                aggregated_model = await self.transformations.aggregate_thoughts(recent_models)
-                if aggregated_model:
-                    # Add to graph with edges from parents
-                    self.thought_graph.add_node(aggregated_model)
-                    for model in recent_models:
-                        self.thought_graph.add_edge(model, aggregated_model)
-                    state["current_model"] = aggregated_model
-        except Exception as e:
-            logger.error(f"Error in aggregate_thoughts_node: {e}")
-        return state
-
-    async def refine_thought_node(self, state: AgentState) -> AgentState:
-        """GoT: Node for refining a thought"""
-        try:
-            refined_model = await self.transformations.refine_thought(state["current_model"])
-            if refined_model:
-                # Add refinement to graph with self-loop
-                self.thought_graph.add_node(refined_model)
-                self.thought_graph.add_edge(state["current_model"], refined_model)
-                self.thought_graph.add_edge(refined_model, refined_model)  # Self-loop
-                state["current_model"] = refined_model
-        except Exception as e:
-            logger.error(f"Error in refine_thought_node: {e}")
-        return state
-
-    def compute_thought_metrics(self, thought: ModelState) -> Dict:
-        """GoT: Compute volume and latency metrics for a thought"""
-        try:
-            if not self.thought_graph.has_node(thought):
+            if not self.thought_graph.has_node(model.id):
                 return {"volume": 0, "latency": 0}
             
-            # Volume: number of predecessor thoughts
-            volume = len(nx.ancestors(self.thought_graph, thought))
+            # Calculate volume (number of predecessor thoughts)
+            volume = len(nx.ancestors(self.thought_graph, model.id))
             
-            # Latency: longest path to this thought
+            # Calculate latency (longest path to this thought)
             root_nodes = [n for n in self.thought_graph.nodes() 
                          if self.thought_graph.in_degree(n) == 0]
             
-            if not root_nodes:
-                return {"volume": volume, "latency": 0}
-                
-            paths = []
+            max_path_length = 0
             for root in root_nodes:
-                if nx.has_path(self.thought_graph, root, thought):
-                    paths.extend(nx.all_simple_paths(self.thought_graph, root, thought))
+                if nx.has_path(self.thought_graph, root, model.id):
+                    paths = list(nx.all_simple_paths(self.thought_graph, root, model.id))
+                    if paths:
+                        max_path_length = max(max_path_length, max(len(path) for path in paths))
             
-            latency = max(len(path) for path in paths) if paths else 0
-            
-            return {"volume": volume, "latency": latency}
+            return {
+                "volume": volume,
+                "latency": max_path_length
+            }
             
         except Exception as e:
             logger.error(f"Error computing thought metrics: {e}")
@@ -147,9 +141,8 @@ class ModelDiscoveryGraph:
             knowledge = self.kg.query_mechanism(current_mechanism)
             state["knowledge"] = knowledge
             
-            # Add initial thought to graph if not present
-            if not self.thought_graph.has_node(state["current_model"]):
-                self.thought_graph.add_node(state["current_model"])
+            # Add to thought graph
+            self._add_to_thought_graph(state["current_model"], "knowledge_query")
         except Exception as e:
             logger.error(f"Error in query_knowledge_node: {e}")
         return state
@@ -166,15 +159,37 @@ class ModelDiscoveryGraph:
             response = await self.llm.agenerate([messages])
             new_model = self._parse_llm_response(response.generations[0][0].text)
             if new_model:
-                # Add to thought graph with edge from current model
-                self.thought_graph.add_node(new_model)
-                self.thought_graph.add_edge(state["current_model"], new_model)
                 state["current_model"] = new_model
+                self._add_to_thought_graph(new_model, "generation")
         except Exception as e:
             logger.error(f"Error in generate_hypothesis_node: {e}")
         return state
 
-   
+    async def aggregate_thoughts_node(self, state: AgentState, thoughts: List[ModelState]) -> AgentState:
+        """Node for combining multiple thoughts"""
+        try:
+            aggregated_model = await self.transformations.aggregate_thoughts(thoughts)
+            if aggregated_model:
+                state["current_model"] = aggregated_model
+                self._add_to_thought_graph(aggregated_model, "aggregation", parent_thoughts=thoughts)
+                state["metrics"]["aggregation_counts"].append(len(thoughts))
+        except Exception as e:
+            logger.error(f"Error in aggregate_thoughts_node: {e}")
+        return state
+
+    async def refine_thought_node(self, state: AgentState) -> AgentState:
+        """Node for refining existing thoughts"""
+        try:
+            refined_model = await self.transformations.refine_thought(state["current_model"])
+            if refined_model:
+                state["current_model"] = refined_model
+                self._add_to_thought_graph(refined_model, "refinement", 
+                                         parent_thoughts=[state["current_model"]])
+                state["metrics"]["refinement_counts"].append(1)
+        except Exception as e:
+            logger.error(f"Error in refine_thought_node: {e}")
+        return state
+
     async def evaluate_model_node(self, state: AgentState) -> AgentState:
         """Node for evaluating models"""
         try:
@@ -197,16 +212,25 @@ class ModelDiscoveryGraph:
         return state
     
     async def check_convergence_node(self, state: AgentState) -> AgentState:
-        """Node for checking convergence"""
+        """Node for checking convergence and updating metrics"""
         try:
             if "metrics" not in state:
                 state["metrics"] = self.default_metrics.copy()
             
+            # Update standard metrics
             state["metrics"]["scores"].append(state["current_model"].score)
             state["metrics"]["model_complexity"].append(len(state["current_model"].equations[0].split()))
             state["metrics"]["iterations"].append(len(state["metrics"]["scores"]))
+            
+            # Update GoT metrics
+            if state["current_model"]:
+                thought_metrics = self.compute_thought_metrics(state["current_model"])
+                state["metrics"]["thought_volumes"].append(thought_metrics["volume"])
+                state["metrics"]["thought_latencies"].append(thought_metrics["latency"])
+            
             if state["current_model"].equations:
                 state["metrics"]["exploration_paths"].append(state["current_model"].equations[0])
+                
         except Exception as e:
             logger.error(f"Error in check_convergence_node: {e}")
         return state
@@ -216,8 +240,32 @@ class ModelDiscoveryGraph:
         state["next_step"] = "complete"
         return state
 
+    def _update_thought_tracking(self, state: AgentState):
+        """Manage thought history and active thoughts"""
+        # Add current thought to history
+        state['thought_history'].append(state['current_model'])
+        
+        # Update active thoughts
+        state['active_thoughts'].append(state['current_model'])
+        if len(state['active_thoughts']) > self.max_active_thoughts:
+            # Keep best thoughts based on score
+            state['active_thoughts'] = sorted(
+                state['active_thoughts'],
+                key=lambda x: x.score if x.score is not None else float('-inf'),
+                reverse=True
+            )[:self.max_active_thoughts]
+
+    def _add_to_thought_graph(self, model: ModelState, operation_type: str, 
+                             parent_thoughts: List[ModelState] = None):
+        """Add thought to graph with relationships"""
+        self.thought_graph.add_node(model.id, state=model)
+        if parent_thoughts:
+            for parent in parent_thoughts:
+                self.thought_graph.add_edge(parent.id, model.id, 
+                                          operation=operation_type)
+
     def decide_next_step(self, state: AgentState) -> str:
-        """Decide next step based on current state"""
+        """Decide whether to continue or complete the workflow"""
         try:
             if len(state["metrics"]["scores"]) >= 50:
                 return "complete"
@@ -297,8 +345,8 @@ class ModelDiscoveryGraph:
             logger.error(f"Error computing model score: {e}")
             return 0.0
 
-    def _extract_mechanism(self, model: ModelState) -> str:
-        """Extract mechanism type from model"""
+    def _extract_mechanism(self, model: ModelState) -> str: 
+        """Extract mechanism type from model, totally stupid now"""
         if "Q(t)" in model.equations[0]:
             return "reinforcement_learning"
         if "WM(t)" in model.equations[0]:
