@@ -62,9 +62,9 @@ trial_sequence = generate_bandit_trials(n_trials, reward_probabilities)
 experiment = generate_experiment(trial_sequence)
 
 # Run the experiment on the synthetic participant
-data = execute_experiment(experiment)
-# rewards, choices = execute_experiment_simple(trial_sequence, "18", "male")
+# data = execute_experiment(experiment)
+rewards, choices = execute_experiment_simple(trial_sequence, "18", "male")
 
-# print(trial_sequence)
+print(trial_sequence)
 print(rewards)
 print(choices)
