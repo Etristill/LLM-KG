@@ -23,6 +23,19 @@ def execute_experiment(experiment):
     print(data)
     return data
 
+def execute_experiment_simple(trial_sequence, age, gender):
+    prompt = ("You are a human participant with the following demographics: "
+              + str(age) + " years old and " + str(gender) + "."
+              + " You are participating in the following psychology experiment. ")
+    prompt += "In this experiment, you will see two boxes. Your goal is to find out which box gives more rewards by clicking on them. Each box might change how often it gives rewards, so keep experimenting and try to maximize your total rewards. When you select your response, answer only with '1' or '2' indicating the number of the bandit."
+
+
+
+
+
+
+
+
 
 import os
 
