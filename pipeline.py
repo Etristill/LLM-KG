@@ -45,7 +45,8 @@ class EnhancedModelDiscoveryPipeline:
         self.mcts = EnhancedMCTS(self.kg)
         self.evaluator = SimpleEvaluator(self.test_data)
         self.llm = EnhancedLLMInterface(use_mock=use_mock_llm)
-        self.graph_workflow = ModelDiscoveryGraph(self.kg)
+        self.graph_workflow = ModelDiscoveryGraph(self.kg, test_data=self.test_data)
+
         self.n_iterations = n_iterations
         
         # Thought pool for GoT

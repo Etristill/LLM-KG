@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from .core import ModelState
 from .knowledge_graph import CognitiveKnowledgeGraph
 from .transformations import ThoughtTransformations
+from .evaluation import SimpleEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class AgentState(TypedDict):
 
 class ModelDiscoveryGraph:
     """Manages the discovery process combining MCTS exploration with Graph of Thoughts"""
-    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph):
+    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph, test_data: Dict):
         # Core components initialization
         self.kg = knowledge_graph
         self.llm = ChatOpenAI(
@@ -41,6 +42,7 @@ class ModelDiscoveryGraph:
             temperature=0.7,
         )
         self.transformations = ThoughtTransformations(self.llm)
+        self.evaluator = SimpleEvaluator(test_data)
         
         # Graph structures
         self.workflow_graph = nx.DiGraph()  # For workflow steps
@@ -49,7 +51,7 @@ class ModelDiscoveryGraph:
         # Configuration
         self.max_active_thoughts = 10
         self.aggregation_threshold = 0.2
-        self.refinement_threshold = 0.05 #forcing more changes, idk?
+        self.refinement_threshold = 0.05
         
         # Initialize metrics structure
         self.default_metrics = {
@@ -105,34 +107,45 @@ class ModelDiscoveryGraph:
             logger.error(f"Error in workflow execution: {e}")
             return state
 
-    def compute_thought_metrics(self, model: ModelState) -> Dict:
-        """Compute metrics for a thought, including volume and latency"""
+    async def evaluate_model_node(self, state: AgentState) -> AgentState:
+        """Node for evaluating models"""
         try:
-            if not self.thought_graph.has_node(model.id):
-                return {"volume": 0, "latency": 0}
-            
-            # Calculate volume (number of predecessor thoughts)
-            volume = len(nx.ancestors(self.thought_graph, model.id))
-            
-            # Calculate latency (longest path to this thought)
-            root_nodes = [n for n in self.thought_graph.nodes() 
-                         if self.thought_graph.in_degree(n) == 0]
-            
-            max_path_length = 0
-            for root in root_nodes:
-                if nx.has_path(self.thought_graph, root, model.id):
-                    paths = list(nx.all_simple_paths(self.thought_graph, root, model.id))
-                    if paths:
-                        max_path_length = max(max_path_length, max(len(path) for path in paths))
-            
-            return {
-                "volume": volume,
-                "latency": max_path_length
-            }
-            
+            # Use NLL for scoring
+            score = self.evaluator.evaluate_model(state["current_model"])
+            state["current_model"].score = score
         except Exception as e:
-            logger.error(f"Error computing thought metrics: {e}")
-            return {"volume": 0, "latency": 0}
+            logger.error(f"Error in evaluate_model_node: {e}")
+        return state
+
+    def _compute_model_score(self, model: ModelState, knowledge: Dict) -> float:
+        """Compute model score using NLL and additional penalties"""
+        try:
+            # Use NLL as the base score
+            nll_score = self.evaluator.evaluate_model(model)
+            complexity_penalty = len(model.equations[0].split()) * 0.01
+            param_penalty = len(model.parameters) * 0.05
+            
+            # Combine NLL and penalties
+            total_score = nll_score - complexity_penalty - param_penalty
+            return total_score
+        except Exception as e:
+            logger.error(f"Error computing model score: {e}")
+            return float('inf')
+
+    def _update_thought_tracking(self, state: AgentState):
+        """Manage thought history and active thoughts"""
+        # Add current thought to history
+        state['thought_history'].append(state['current_model'])
+        
+        # Update active thoughts
+        state['active_thoughts'].append(state['current_model'])
+        if len(state['active_thoughts']) > self.max_active_thoughts:
+            # Keep best thoughts based on score
+            state['active_thoughts'] = sorted(
+                state['active_thoughts'],
+                key=lambda x: x.score if x.score is not None else float('-inf'),
+                reverse=True
+            )[:self.max_active_thoughts]
 
     async def query_knowledge_node(self, state: AgentState) -> AgentState:
         """Node for querying knowledge graph"""
@@ -190,15 +203,6 @@ class ModelDiscoveryGraph:
             logger.error(f"Error in refine_thought_node: {e}")
         return state
 
-    async def evaluate_model_node(self, state: AgentState) -> AgentState:
-        """Node for evaluating models"""
-        try:
-            score = self._compute_model_score(state["current_model"], state["knowledge"])
-            state["current_model"].score = score
-        except Exception as e:
-            logger.error(f"Error in evaluate_model_node: {e}")
-        return state
-    
     async def update_knowledge_node(self, state: AgentState) -> AgentState:
         """Node for updating knowledge graph"""
         try:
@@ -239,21 +243,6 @@ class ModelDiscoveryGraph:
         """Final node in the workflow"""
         state["next_step"] = "complete"
         return state
-
-    def _update_thought_tracking(self, state: AgentState):
-        """Manage thought history and active thoughts"""
-        # Add current thought to history
-        state['thought_history'].append(state['current_model'])
-        
-        # Update active thoughts
-        state['active_thoughts'].append(state['current_model'])
-        if len(state['active_thoughts']) > self.max_active_thoughts:
-            # Keep best thoughts based on score
-            state['active_thoughts'] = sorted(
-                state['active_thoughts'],
-                key=lambda x: x.score if x.score is not None else float('-inf'),
-                reverse=True
-            )[:self.max_active_thoughts]
 
     def _add_to_thought_graph(self, model: ModelState, operation_type: str, 
                              parent_thoughts: List[ModelState] = None):
@@ -331,19 +320,34 @@ class ModelDiscoveryGraph:
             
         return None
 
-    def _compute_model_score(self, model: ModelState, knowledge: Dict) -> float:
-        """Compute model score"""
+    def compute_thought_metrics(self, model: ModelState) -> Dict:
+        """Compute metrics for a thought, including volume and latency"""
         try:
-            # Simple scoring based on equation complexity and parameter count
-            complexity_penalty = len(model.equations[0].split()) * 0.01
-            param_penalty = len(model.parameters) * 0.05
-            base_score = 0.5  # Base score
+            if not self.thought_graph.has_node(model.id):
+                return {"volume": 0, "latency": 0}
             
-            return base_score - complexity_penalty - param_penalty
+            # Calculate volume (number of predecessor thoughts)
+            volume = len(nx.ancestors(self.thought_graph, model.id))
+            
+            # Calculate latency (longest path to this thought)
+            root_nodes = [n for n in self.thought_graph.nodes() 
+                         if self.thought_graph.in_degree(n) == 0]
+            
+            max_path_length = 0
+            for root in root_nodes:
+                if nx.has_path(self.thought_graph, root, model.id):
+                    paths = list(nx.all_simple_paths(self.thought_graph, root, model.id))
+                    if paths:
+                        max_path_length = max(max_path_length, max(len(path) for path in paths))
+            
+            return {
+                "volume": volume,
+                "latency": max_path_length
+            }
             
         except Exception as e:
-            logger.error(f"Error computing model score: {e}")
-            return 0.0
+            logger.error(f"Error computing thought metrics: {e}")
+            return {"volume": 0, "latency": 0}
 
     def _extract_mechanism(self, model: ModelState) -> str: 
         """Extract mechanism type from model, totally stupid now"""
