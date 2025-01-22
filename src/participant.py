@@ -16,7 +16,7 @@ def generate(prompt):
 
     response = message.choices[0].message.content
 
-    return response
+    return response[0]
 
 def execute_experiment(experiment):
     '''
@@ -62,9 +62,12 @@ trial_sequence = generate_bandit_trials(n_trials, reward_probabilities)
 experiment = generate_experiment(trial_sequence)
 
 # Run the experiment on the synthetic participant
-# data = execute_experiment(experiment)
 rewards, choices = execute_experiment_simple(trial_sequence, "18", "male")
 
 print(trial_sequence)
 print(rewards)
 print(choices)
+
+# Alternative using SweetBean
+# data = execute_experiment(experiment)
+# print(data)
