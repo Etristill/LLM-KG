@@ -3,7 +3,6 @@
 # - Tests how well models perform
 # - Computes scores for each model
 
-
 from typing import Dict, List, Tuple
 import numpy as np
 from .core import ModelState
@@ -17,34 +16,36 @@ class SimpleEvaluator:
     def evaluate_model(self, state: ModelState) -> float:
         """
         Evaluate a model based on:
-        1. Prediction accuracy
+        1. Prediction negative log likelihood (NLL)
         2. Model complexity (penalty)
-        3. Parameter reasonableness :D
+        3. Parameter reasonableness
         """
         equation_key = ''.join(state.equations)
         if equation_key in self.cached_scores:
             return self.cached_scores[equation_key]
 
         # Calculate different score components
-        accuracy_score = self._compute_accuracy(state)
+        nll_score = self._compute_negative_log_likelihood(state)
         complexity_penalty = self._compute_complexity_penalty(state)
         parameter_penalty = self._compute_parameter_penalty(state)
 
         # Combine scores
-        total_score = accuracy_score - complexity_penalty - parameter_penalty
+        total_score = -nll_score - complexity_penalty - parameter_penalty
         
         # Cache and return
         self.cached_scores[equation_key] = total_score
         return total_score
 
-    def _compute_accuracy(self, state: ModelState) -> float:
-        """Compute how well model predictions match actual data"""
-        predictions = self._simulate_model(state)
+    def _compute_negative_log_likelihood(self, state: ModelState) -> float:
+        """Compute the negative log likelihood of the model's predictions given the data"""
+        predictions = self._simulate_model_probabilities(state)
         actual_actions = self.data['actions']
-        
-        # Calculate accuracy (aAS percentage of correct predictions)
-        accuracy = np.mean(predictions == actual_actions)
-        return accuracy
+
+        # Prevent log(0) by adding a small epsilon
+        epsilon = 1e-10
+        log_likelihood = np.sum(np.log(predictions[np.arange(len(actual_actions)), actual_actions] + epsilon))
+
+        return -log_likelihood
 
     def _compute_complexity_penalty(self, state: ModelState) -> float:
         """Penalize complex models"""
@@ -59,7 +60,7 @@ class SimpleEvaluator:
         """Penalize unreasonable parameter values"""
         penalty = 0.0
         
-        # Check each parameter is in reasonable range , i made it ip, we need to define proper vals here 
+        # Check each parameter is in reasonable range
         for param, value in state.parameters.items():
             if param == 'alpha' and (value < 0 or value > 1):
                 penalty += 0.2
@@ -70,28 +71,28 @@ class SimpleEvaluator:
                 
         return penalty
 
-    def _simulate_model(self, state: ModelState) -> np.ndarray:
+    def _simulate_model_probabilities(self, state: ModelState) -> np.ndarray:
         """
-        Simulate model predictions
+        Simulate model probabilities for actions
         For MVP: Simplified simulation using basic Q-learning
         """
         n_trials = len(self.data['timestamps'])
         q_values = np.zeros(2)  # Q-values for two actions
-        predictions = np.zeros(n_trials, dtype=int)
+        probabilities = np.zeros((n_trials, 2))
         alpha = state.parameters.get('alpha', 0.1)
         temp = state.parameters.get('temp', 1.0)
 
         for t in range(n_trials):
-            # Softmax decision
-            p_action1 = 1 / (1 + np.exp(-(q_values[1] - q_values[0])/temp))
-            predictions[t] = int(np.random.random() < p_action1)
-            
-            # Update Q-values based on reward
+            # Softmax probabilities
+            exp_q = np.exp(q_values / temp)
+            probabilities[t] = exp_q / np.sum(exp_q)
+
+            # Upd Q-values based on reward
             reward = self.data['rewards'][t]
             chosen_action = self.data['actions'][t]
             q_values[chosen_action] += alpha * (reward - q_values[chosen_action])
 
-        return predictions
+        return probabilities
 
 class ModelSimulator:
     """Simulates cognitive models to generate predictions"""
@@ -108,8 +109,9 @@ class ModelSimulator:
         for _ in range(n_trials):
             # Make choice using softmax
             temp = state.parameters.get('temp', 1.0)
-            p_action1 = 1 / (1 + np.exp(-(q_values[1] - q_values[0])/temp))
-            choice = int(np.random.random() < p_action1)
+            exp_q = np.exp(q_values / temp)
+            probabilities = exp_q / np.sum(exp_q)
+            choice = np.random.choice([0, 1], p=probabilities)
             
             # Generate reward
             reward_prob = 0.7 if choice == 1 else 0.3

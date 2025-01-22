@@ -48,8 +48,8 @@ class ModelDiscoveryGraph:
         
         # Configuration
         self.max_active_thoughts = 10
-        self.aggregation_threshold = 0.7
-        self.refinement_threshold = 0.5
+        self.aggregation_threshold = 0.2
+        self.refinement_threshold = 0.05 #forcing more changes, idk?
         
         # Initialize metrics structure
         self.default_metrics = {
