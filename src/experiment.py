@@ -13,14 +13,6 @@ from sweetbean.variable import (
 )
 import random
 import numpy as np
-from scipy.stats import beta
-
-
-def merge_dicts(defaults, overrides):
-    """Merges two dictionaries, giving precedence to overrides."""
-    if overrides is None:
-        overrides = {}
-    return {**defaults, **overrides}
 
 class ExperimentInfo:
     """Structured information about 2-armed bandit experiments"""
