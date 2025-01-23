@@ -162,7 +162,12 @@ class ModelDiscoveryGraph:
             ]
             
             response = await self.llm.agenerate([messages])
-            new_model = self._parse_llm_response(response.generations[0][0].text)
+            response_text = response.generations[0][0].text
+            
+            # Debug logging to see what we're getting from LLM
+            logger.debug(f"LLM Response:\n{response_text}")
+            
+            new_model = self._parse_llm_response(response_text)
             
             # If we successfully parsed a new model, update current_model
             if new_model:
@@ -171,12 +176,52 @@ class ModelDiscoveryGraph:
                     new_model.score = state["current_model"].score
                 state["current_model"] = new_model
                 self._add_to_thought_graph(new_model, "generation")
+            else:
+                # If parsing failed, keep the current model instead of None
+                logger.warning("Failed to parse LLM response, keeping current model")
+                new_model = state["current_model"].copy()
                 
             return state
             
         except Exception as e:
             logger.error(f"Error in generate_hypothesis_node: {e}")
             return state
+
+    def _create_hypothesis_prompt(self, state: AgentState) -> str:
+        """Create prompt encouraging creative exploration."""
+        current_model = state["current_model"]
+        
+        return f"""Explore creative mathematical models for learning and decision-making.
+
+Current model:
+{current_model.equations[0]}
+
+Current parameters:
+{current_model.parameters}
+
+You can:
+- Combine multiple learning mechanisms
+- Add new parameters with any values
+- Try non-linear interactions
+- Experiment with temporal dependencies
+- Add memory effects
+- Consider additional mechanisms
+- Explore adaptation and meta-learning
+KEY FORMAT REQUIREMENTS:
+- All parameters must be plain numeric values. For example, do not write "2 * pi / 25", just approximate it to 0.2513274.
+Use PLAIN text notation (not LaTeX)!!!!!!!!!
+   - Write 'alpha' not '\alpha'
+   - Use simple functions like 'exp(x)' not 'e^x'
+   - No \[ or \] or \frac notation
+
+Just ensure your equation uses Q(t) and R(t) terms.
+
+Response format:
+EQUATION: [your equation]
+PARAMETERS: [your parameters]
+THEORETICAL_BASIS: [your idea]
+
+Be creative and explore interesting mathematical structures!"""
 
     async def aggregate_thoughts_node(self, state: AgentState, thoughts: List[ModelState]) -> AgentState:
         """Node for combining multiple thoughts."""
@@ -246,168 +291,145 @@ class ModelDiscoveryGraph:
             logger.error(f"Error in update_knowledge_node: {e}")
             return state
 
-    def _create_hypothesis_prompt(self, state: AgentState) -> str:
-        """Create detailed prompt for hypothesis generation."""
-        current_model = state["current_model"]
-        knowledge = state["knowledge"]
-        
-        # Extract mechanism information
-        mechanism_info = ""
-        for mech, info in knowledge.items():
-            if not mech.endswith('_performance'):
-                mechanism_info += f"\n{mech}:\n"
-                if 'description' in info:
-                    mechanism_info += f"Description: {info['description']}\n"
-                if 'base_equations' in info:
-                    mechanism_info += f"Base equations: {info['base_equations']}\n"
-                if 'parameters' in info:
-                    mechanism_info += f"Parameters: {info['parameters']}\n"
-        
-        return f"""
-        Current cognitive model equation(s):
-        {current_model.equations[0]}
-        
-        Current parameters:
-        {current_model.parameters}
-        
-        Known mechanism information:
-        {mechanism_info}
-        
-        Generate a variation of this model that:
-        1. Incorporates these known cognitive mechanisms
-        2. Uses validated parameter ranges
-        3. Maintains mathematical precision
-        4. Builds on successful patterns
-        5. Could explain human learning in a two-armed bandit task
-        
-        YOU MUST FORMAT YOUR RESPONSE EXACTLY AS FOLLOWS:
-        EQUATION: [your equation]
-        PARAMETERS: [parameter1: value1, parameter2: value2, ...]
-        THEORETICAL_BASIS: [brief explanation of theoretical justification]
-        """
-
     def _parse_llm_response(self, text: str) -> Optional[ModelState]:
-        """
-        Parse LLM response into a ModelState.
-        - Fixes the 'unexpected keyword argument "metadata"' by NOT passing metadata.
-        - Embeds the theoretical_basis into parameters if it exists.
-        - Cleans up unquoted keys or special characters in parameters.
-        """
+        """Parse LLM response into a ModelState."""
         try:
+            logger.info(f"Raw LLM response:\n{text}")
+            
             lines = text.strip().split('\n')
             equation = None
             parameters = {}
-            theoretical_basis = None
             
             for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                # Parse equation
                 if line.startswith('EQUATION:'):
                     equation = line.replace('EQUATION:', '').strip()
-                
+                    logger.info(f"Found equation: {equation}")
+                    
+                # Parse parameters
                 elif line.startswith('PARAMETERS:'):
-                    params_str = line.replace('PARAMETERS:', '').strip()
-                    parameters = self._safe_parse_parameters(params_str)
-                
-                elif line.startswith('THEORETICAL_BASIS:'):
-                    theoretical_basis = line.replace('THEORETICAL_BASIS:', '').strip()
+                    param_text = line.replace('PARAMETERS:', '').strip()
+                    try:
+                        # Try to evaluate as literal Python dict
+                        if param_text.startswith('{') and param_text.endswith('}'):
+                            parameters = ast.literal_eval(param_text)
+                        else:
+                            # If not in dict format, try to parse key-value pairs
+                            pairs = param_text.split(',')
+                            for pair in pairs:
+                                if ':' in pair:
+                                    key, value = pair.split(':')
+                                    key = key.strip()
+                                    try:
+                                        value = float(value.strip())
+                                        parameters[key] = value
+                                    except ValueError:
+                                        continue
+                    except Exception as e:
+                        logger.error(f"Error parsing parameters: {e}")
+                        logger.info(f"Problem parameter text: {param_text}")
             
-            if equation:
-                # If there's a theoretical_basis, store it in parameters for reference
-                if theoretical_basis:
-                    parameters["theoretical_basis"] = theoretical_basis
-                
-                return ModelState(
+            # Add debug logs
+            logger.info(f"Parsed equation: {equation}")
+            logger.info(f"Parsed parameters: {parameters}")
+            
+            if equation and parameters:
+                new_state = ModelState(
                     equations=[equation],
                     parameters=parameters
                 )
+                if self.validate_equation(new_state):
+                    return new_state
             
             return None
             
         except Exception as e:
             logger.error(f"Error parsing LLM response: {e}")
+            logger.info(f"Problematic text:\n{text}")
             return None
-
+    
     def _safe_parse_parameters(self, params_str: str) -> Dict[str, float]:
-        """
-        Safely parse the PARAMETERS line, handling cases like:
-          {learning_rate: 0.2, temperature: 1.5, β: 5.0, Q(ref): 0.0}
-        by:
-          1. Adding braces if missing.
-          2. Quoting unquoted keys (including exotic ones like β or Q(ref)).
-          3. Using ast.literal_eval to parse the cleaned string.
-          4. Converting values to float if possible.
-        """
-        candidate = params_str.strip()
-        
-        # If missing braces, add them
-        if not candidate.startswith("{"):
-            candidate = "{" + candidate
-        if not candidate.endswith("}"):
-            candidate += "}"
-        
-        # Now attempt to quote unquoted keys:
-        candidate = self._quote_unquoted_keys(candidate)
-        
-        # Try to parse
-        param_dict = {}
+        """Parse parameter string into dictionary."""
         try:
-            param_dict = ast.literal_eval(candidate)
-        except Exception as parse_err:
-            logger.error(
-                f"Error parsing parameter value with ast.literal_eval: {candidate} | {parse_err}"
-            )
-            param_dict = {}
-        
-        # Convert each value to float if possible
-        parsed_params = {}
-        for k, v in param_dict.items():
+            # Debug logging
+            logger.debug(f"Parsing parameters string: {params_str}")
+            
+            # Clean up the string
+            params_str = params_str.strip()
+            if not params_str:
+                return {}
+
+            # If string is just "PARAMETERS:", return empty dict (>>>>>?)
+            if params_str.upper() == "PARAMETERS:":
+                return {}
+
+            # Remove "PARAMETERS:" if present
+            if params_str.upper().startswith("PARAMETERS:"):
+                params_str = params_str[len("PARAMETERS:"):].strip()
+
+            # Add braces if missing, this helps
+            if not params_str.startswith('{'):
+                params_str = '{' + params_str
+            if not params_str.endswith('}'):
+                params_str += '}'
+
+            # Clean up the string - normalize spaces and quotes
+            params_str = re.sub(r'\s*:\s*', ':', params_str)
+            params_str = re.sub(r'\s*,\s*', ',', params_str)
+
+            # Remove outer braces and split into pairs
+            content = params_str.strip('{}')
+            if not content:
+                return {}
+
+            pairs = content.split(',')
+            parameters = {}
+            
+            for pair in pairs:
+                if not pair or ':' not in pair:
+                    continue
+                
+                try:
+                    key, value = pair.split(':', 1)
+                    key = key.strip().strip('"').strip("'")
+                    
+                    # Extract the numeric value, handling scientific notation
+                    # This regex matches normal numbers and scientific notation
+                    match = re.search(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', value)
+                    if match:
+                        value = float(match.group())
+                        parameters[key] = value
+                except ValueError as ve:
+                    logger.warning(f"Could not parse value in pair '{pair}': {ve}")
+                except Exception as e:
+                    logger.warning(f"Error processing pair '{pair}': {e}")
+
+            logger.debug(f"Successfully parsed parameters: {parameters}")
+            return parameters
+            
+        except Exception as e:
+            logger.error(f"Error parsing parameters: {e}")
+            return {}
+
+    def validate_equation(self, state: ModelState) -> bool:
+            """Minimal validation to allow creative exploration."""
             try:
-                parsed_params[str(k).strip()] = float(v)
-            except (ValueError, TypeError):
-                logger.error(f"Could not convert param: {k}={v} to float")
-        return parsed_params
-
-    def _quote_unquoted_keys(self, text: str) -> str:
-        """
-        Use a regex to enclose any unquoted key (which can include letters, digits, 
-        underscore, parentheses, Greek letters, etc.) in double quotes, 
-        so ast.literal_eval or JSON can parse them.
+                equation = state.equations[0]
+                
+                # Only check that we have Q(t) and R(t) and balanced parentheses becazuse otherwise everything gets too tricky
+                basic_terms_present = 'Q(t' in equation and 'R(t' in equation
+                balanced_parens = equation.count('(') == equation.count(')')
+                
+                return basic_terms_present and balanced_parens
+                
+            except Exception as e:
+                logger.error(f"Error validating equation: {e}")
+                return False
         
-        Example:
-          {learning_rate: 0.2, temperature: 1.5, β: 5.0, Q(ref): 0.0}
-        becomes
-          {"learning_rate": 0.2, "temperature": 1.5, "β": 5.0, "Q(ref)": 0.0}
-        """
-        # Regex explanation:
-        # - Look for a group that starts with optional spaces or braces/commas,
-        #   then capture a sequence of characters (excluding quotes) up to a colon.
-        # - We assume that keys do not contain colons themselves except for the key:value boundary.
-        # - We skip if there's already a quote in front of the key.
-        #
-        # STILL FAILING ;<<<< but I'm close
-        
-        # Remove any stray whitespace around colons
-        text = re.sub(r'\s*:\s*', ': ', text)
-
-        # Now quote the keys if they are not already quoted:
-        # pattern: something like  { or , or ^  followed by (not " or ' or space) repeated, up to colon
-        # We'll capture the group after the brace or comma, then wrap in quotes.
-        # Explanation:
-        #   ([{,]\s*) - group 1: a brace or comma plus optional spaces
-        #   ([^\s"\'{,]+) - group 2: one or more chars that are NOT whitespace, quote, brace, or comma
-        #   (?=\s*:) - a lookahead ensuring there's a colon ahead
-
-        # replacement: \1 "group2"
-        # then we add a trailing quote, so effectively: { group -> { "group    -> something like that
-
-        def replacer(match):
-            g1 = match.group(1)
-            g2 = match.group(2)
-            return f'{g1}"{g2}"'
-
-        text_quoted = re.sub(pattern, replacer, text)
-
-        return text_quoted
-
     def _extract_mechanisms(self, state: ModelState) -> List[str]:
         """Extract cognitive mechanisms from model state."""
         try:
@@ -518,10 +540,10 @@ class ModelDiscoveryGraph:
             if not self.thought_graph.has_node(model.id):
                 return {"volume": 0, "latency": 0, "influence": 0, "novelty": 0}
             
-            #  volume ==nnumber of predecessor thoughts
+            # Volume = number of predecessor thoughts
             volume = len(nx.ancestors(self.thought_graph, model.id))
             
-            #  latency == longest path to this thought
+            # Latency = longest path to this thought
             root_nodes = [
                 n for n in self.thought_graph.nodes() 
                 if self.thought_graph.in_degree(n) == 0
@@ -556,7 +578,7 @@ class ModelDiscoveryGraph:
                 pagerank = nx.pagerank(self.thought_graph, alpha=0.85)
                 return pagerank[model.id]
             except ImportError:
-                # Fallk to simpler centrality
+                # Fallback to simpler centrality
                 return nx.degree_centrality(self.thought_graph)[model.id]
                 
         except Exception as e:
@@ -566,20 +588,23 @@ class ModelDiscoveryGraph:
     def _compute_novelty(self, model: ModelState) -> float:
         """Compute model's novelty compared to existing thoughts."""
         try:
-            if not self.thought_graph or self.thought_graph.number_of_nodes() == 0:
-                return 1.0
+            if not model.equations:
+                return 0.0
                 
+            equation = model.equations[0]
             similarities = []
+            
             for node_id in self.thought_graph.nodes():
-                if node_id != model.id:
-                    node_data = self.thought_graph.nodes[node_id]
-                    if 'state' in node_data:
-                        eq1 = model.equations[0] if model.equations else ""
-                        eq2 = node_data['state'].equations[0] if node_data['state'].equations else ""
-                        similarity = self._compute_equation_similarity(eq1, eq2)
-                        similarities.append(similarity)
-                        
-            return 1.0 - (np.mean(similarities) if similarities else 0.0)
+                node_data = self.thought_graph.nodes[node_id].get('state')
+                if node_data and node_data.equations:
+                    other_eq = node_data.equations[0]
+                    similarity = self._compute_equation_similarity(equation, other_eq)
+                    similarities.append(similarity)
+            
+            if not similarities:
+                return 1.0
+            
+            return 1.0 - np.mean(similarities)
             
         except Exception as e:
             logger.error(f"Error computing novelty: {e}")
@@ -596,32 +621,3 @@ class ModelDiscoveryGraph:
         except Exception as e:
             logger.error(f"Error computing equation similarity: {e}")
             return 0.0
-
-    def get_current_performance_metrics(self, state: AgentState) -> Dict:
-        """Get current performance metrics for monitoring."""
-        try:
-            metrics = {
-                'current_score': state['current_model'].score,
-                'active_thoughts': len(state['active_thoughts']),
-                'thought_history': len(state['thought_history']),
-                'unique_mechanisms': len(set(
-                    mech for thought in state['thought_history']
-                    for mech in self._extract_mechanisms(thought)
-                ))
-            }
-            
-            # Adding thought graph metrics if available
-            if self.thought_graph:
-                metrics.update({
-                    'graph_nodes': self.thought_graph.number_of_nodes(),
-                    'graph_edges': self.thought_graph.number_of_edges(),
-                    'avg_node_degree': np.mean([
-                        d for _, d in self.thought_graph.degree()
-                    ]) if self.thought_graph.number_of_nodes() > 0 else 0.0
-                })
-                
-            return metrics
-            
-        except Exception as e:
-            logger.error(f"Error getting performance metrics: {e}")
-            return {}

@@ -1,0 +1,38 @@
+{
+  "timestamp": "2025-01-23T11:29:00.993049",
+  "best_model": {
+    "equations": [
+      "(Q(t+1) = Q(t) + (R(t) - Q(t))) / temp"
+    ],
+    "parameters": {
+      "temp": 1.0
+    },
+    "score": -71.91936350152113,
+    "thought_volume": 0,
+    "thought_latency": 0
+  },
+  "knowledge_graph_stats": {
+    "n_mechanisms": 3,
+    "n_models": 36,
+    "n_relationships": 92,
+    "mechanisms": [
+      "reinforcement_learning",
+      "working_memory",
+      "prediction_error"
+    ],
+    "model_distribution": {
+      "reinforcement_learning": 30,
+      "working_memory": 6,
+      "prediction_error": 0
+    },
+    "avg_model_score": -72.10893751765133
+  },
+  "settings": {
+    "n_iterations": 50,
+    "exploration_constant": 1.414,
+    "use_mock_llm": false
+  },
+  "successful_mechanisms": [
+    "reinforcement_learning"
+  ]
+}
