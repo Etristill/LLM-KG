@@ -7,7 +7,7 @@ from langchain.graphs.networkx_graph import KnowledgeTriple
 import neonx
 import json
 import pandas as pd
-# class to create knowledge graph and add triple
+# class to create knowledge graph and add triples
 
 class Graph:
     def __init__(self):
