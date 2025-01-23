@@ -104,6 +104,6 @@ reward_probabilities = (0.7, 0.3)  # Arm 0 has 70% reward probability, Arm 1 has
 sigma = (0.02, 0.02)
 hazard_rate = 0.05
 trial_sequence = generate_bandit_trials(n_trials, reward_probabilities, sigma, hazard_rate)
-print(trial_sequence)
+# print(trial_sequence)
 # Generate an experiment with the trial sequence
 generate_experiment(trial_sequence)
