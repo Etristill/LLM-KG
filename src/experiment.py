@@ -59,36 +59,51 @@ def generate_experiment(reward_sequence, generate_html=False):
     return experiment
 
 
-def generate_bandit_trials(n_trials: int, reward_prob=(0.5, 0.5)) -> np.ndarray:
+def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), hazard_rate=0.05, bounds=(0, 1)):
     """
-    Generates a random trial sequence for a two-armed bandit experiment.
+    Generate a series of reward probabilities and sampled rewards for a 2-armed bandit with drifting probabilities and sudden changes.
 
-    Args:
+    Parameters:
         n_trials (int): Number of trials.
-        reward_prob (tuple): Probabilities of reward for each arm (arm_0, arm_1).
+        p_init (tuple): Initial reward probabilities for both arms (p1, p2).
+        sigma (tuple): Standard deviation of the Gaussian noise added per trial for both arms (sigma1, sigma2).
+        hazard_rate (float): Probability per trial of switching to completely new random reward probabilities.
+        bounds (tuple): Lower and upper bounds for reward probabilities (default: (0, 1)).
 
     Returns:
-        np.ndarray: A (n_trials, 2) array where:
-                    - Column 0: Chosen arm (0 or 1)
-                    - Column 1: Reward received (0 or 1)
+        tuple:
+            np.ndarray: An (n_trials, 2) array of reward probabilities for each arm over time.
+            np.ndarray: An (n_trials, 2) array of sampled rewards (0 or 1) for each arm.
     """
-    # Randomly select arms (0 or 1) for each trial
-    chosen_arms = np.random.randint(0, 2, size=n_trials)
+    p1, p2 = p_init
+    sigma1, sigma2 = sigma
 
-    # Generate rewards based on chosen arm and its probability
-    rewards = np.array([
-        np.random.rand() < reward_prob[arm] for arm in chosen_arms
-    ], dtype=int)
+    probabilities = np.zeros((n_trials, 2))
+    rewards = np.zeros((n_trials, 2), dtype=int)
+    probabilities[0] = [p1, p2]
 
-    # Stack chosen arms and rewards into an (n_trials, 2) array
-    trial_data = np.column_stack((chosen_arms, rewards))
+    for t in range(1, n_trials):
+        if np.random.rand() < hazard_rate:
+            # Change to completely new random probabilities
+            p1, p2 = np.random.uniform(bounds[0], bounds[1], 2)
+        else:
+            # Drift normally
+            p1 = np.clip(p1 + np.random.normal(0, sigma1), bounds[0], bounds[1])
+            p2 = np.clip(p2 + np.random.normal(0, sigma2), bounds[0], bounds[1])
 
-    return trial_data
+        probabilities[t] = [p1, p2]
+        rewards[t] = [np.random.rand() < p1, np.random.rand() < p2]
+
+
+    return rewards
+
 
 # Example usage:
-n_trials = 10
+n_trials = 100
 reward_probabilities = (0.7, 0.3)  # Arm 0 has 70% reward probability, Arm 1 has 30%
-trial_sequence = generate_bandit_trials(n_trials, reward_probabilities)
-
+sigma = (0.02, 0.02)
+hazard_rate = 0.05
+trial_sequence = generate_bandit_trials(n_trials, reward_probabilities, sigma, hazard_rate)
+print(trial_sequence)
 # Generate an experiment with the trial sequence
 generate_experiment(trial_sequence)
