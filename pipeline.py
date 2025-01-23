@@ -538,7 +538,7 @@ async def main():
         default_knowledge_path = "knowledge.csv"
         use_csv = Path(default_knowledge_path).exists()
         
-        # Initialize pipeline with configuration
+        # Init pipeline with configuration
         pipeline = EnhancedModelDiscoveryPipeline(
             use_mock_llm=False,
             n_iterations=50,
@@ -547,21 +547,18 @@ async def main():
             knowledge_path=default_knowledge_path if use_csv else None
         )
         
-        # Setup signal handlers for graceful shutdown
         pipeline.setup_signal_handlers()
         
-        # Run the pipeline
         await pipeline.run()
         
     except KeyboardInterrupt:
-        logger.info("\nGracefully shutting down...")
+        logger.info("\nShutting down...")
         if hasattr(pipeline, 'save_results'):
             pipeline.save_results()
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
         raise
     finally:
-        # Ensure final cleanup
         try:
             if hasattr(pipeline, '_save_metrics'):
                 pipeline._save_metrics()
