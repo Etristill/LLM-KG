@@ -1,0 +1,64 @@
+source_node,target_node,edge_relation
+P_0,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_0,beta_c=0.0 1,has mechanism
+E_0,beta_c=0.0 1,appeared
+0.0 1,beta_c,is mechanism in
+P_0,x_V_LR=0.523 1 + 0.041 c_V[k],has mechanism
+E_0,x_V_LR=0.523 1 + 0.041 c_V[k],appeared
+0.523 1 + 0.041 c_V[k],x_V_LR,is mechanism in
+P_0,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_0,x_V_nc=0.135 1 + 1.000 x_V_nc[k],has mechanism
+E_0,x_V_nc=0.135 1 + 1.000 x_V_nc[k],appeared
+0.135 1 + 1.000 x_V_nc[k],x_V_nc,is mechanism in
+P_0,x_C=0.000,has mechanism
+E_0,x_C=0.000,appeared
+0.000,x_C,is mechanism in
+P_0,x_C_nc=0.000,has mechanism
+E_0,x_C_nc=0.000,appeared
+0.000,x_C_nc,is mechanism in
+P_1,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_1,beta_c=0.0 1,has mechanism
+E_0,beta_c=0.0 1,appeared
+0.0 1,beta_c,is mechanism in
+P_1,x_V_LR=0.581 1,has mechanism
+E_0,x_V_LR=0.581 1,appeared
+0.581 1,x_V_LR,is mechanism in
+P_1,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_1,x_V_nc=0.205 1 + 0.653 x_V_nc[k] + 0.109 x_V_nc[k]^2,has mechanism
+E_0,x_V_nc=0.205 1 + 0.653 x_V_nc[k] + 0.109 x_V_nc[k]^2,appeared
+0.205 1 + 0.653 x_V_nc[k] + 0.109 x_V_nc[k]^2,x_V_nc,is mechanism in
+P_1,x_C=4.378 x_C[k] + -3.378 x_C[k] c_a_repeat[k],has mechanism
+E_0,x_C=4.378 x_C[k] + -3.378 x_C[k] c_a_repeat[k],appeared
+4.378 x_C[k] + -3.378 x_C[k] c_a_repeat[k],x_C,is mechanism in
+P_1,x_C_nc=0.254 x_C_nc[k],has mechanism
+E_0,x_C_nc=0.254 x_C_nc[k],appeared
+0.254 x_C_nc[k],x_C_nc,is mechanism in
+P_2,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_2,beta_c=0.0 1,has mechanism
+E_0,beta_c=0.0 1,appeared
+0.0 1,beta_c,is mechanism in
+P_2,x_V_LR=0.521 1 + 0.044 c_V[k],has mechanism
+E_0,x_V_LR=0.521 1 + 0.044 c_V[k],appeared
+0.521 1 + 0.044 c_V[k],x_V_LR,is mechanism in
+P_2,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_2,x_V_nc=0.135 1 + 1.000 x_V_nc[k],has mechanism
+E_0,x_V_nc=0.135 1 + 1.000 x_V_nc[k],appeared
+0.135 1 + 1.000 x_V_nc[k],x_V_nc,is mechanism in
+P_2,x_C=0.000,has mechanism
+E_0,x_C=0.000,appeared
+0.000,x_C,is mechanism in
+P_2,x_C_nc=0.000,has mechanism
+E_0,x_C_nc=0.000,appeared
+0.000,x_C_nc,is mechanism in
