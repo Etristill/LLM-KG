@@ -1,13 +1,18 @@
 source_node, target_node, edge_relation
+
 softmax,action_probability,output from
+
 Q_ch,softmax,input to
 Q_nc,softmax,input to
+
 sum_q_ch,Q_ch,output from
 sum_q_nc,Q_nc,output from
+
 multiplication_beta_v_ch,sum_q_ch,input to
 multiplication_beta_c_ch,sum_q_ch,input to
 multiplication_beta_v_nc,sum_q_nc,input to
 multiplication_beta_c_nc,sum_q_nc,input to
+
 V_ch_t+1,multiplication_beta_v_ch,input to
 beta_v,multiplication_beta_v_ch,input to
 V_nc_t+1,multiplication_beta_v_nc,input to
@@ -16,11 +21,30 @@ C_ch_t+1,multiplication_beta_c_ch,input to
 beta_c,multiplication_beta_c_ch,input to
 C_nc_t+1,multiplication_beta_c_nc,input to
 beta_c,multiplication_beta_c_nc,input to
-x_V_ch_LR,multiplication_rpe,input to
-reward,sum_rpe,input to
-minus_V_ch_t,sum_rpe,input to
-V_ch_t,multiplication_minus_one_
-x_V_nc,V_nc_t+1,output from
-x_C_ch,C_ch_t+1,output from
-x_C_nc,C_nc_t+1,output from
 
+sum_x_V_ch,V_ch_t+1,output from
+V_ch_t,sum_x_V_ch,input to
+V_ch_update,sum_x_V_ch,input to
+multiplication_rpe,V_ch_update,output from
+reward_prediction_error,multiplication_rpe,input to
+sum_rpe,reward_prediction_error,output from
+in:Reward,sum_rpe,input to
+minus_V_ch_t,sum_rpe,input to
+multiplication_switch_sign,minus_V_ch_t,output from
+V_ch_t,multiplication_switch_sign,input to
+num:-1,multiplication_switch_sign,input to
+
+V_ch_LR_t+1,multiplication_rpe,input to
+x_V_LR,V_ch_LR_t+1,output from
+in:V_ch_LR_t,x_V_LR,input to
+in:Reward,x_V_LR,input to
+
+x_V_nc,V_nc_t+1,output from
+in:V_nc_t,x_V_nc,input to
+
+x_C_ch,C_ch_t+1,output from
+in:C_ch_t,x_C_ch,input to
+in:A_repeated,x_C_ch,input to
+
+x_C_nc,C_nc_t+1,output from
+in:C_nc_t,x_C_nc,input to
