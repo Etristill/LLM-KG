@@ -1,7 +1,0 @@
-numpy
-pandas
-networkx
-anthropic
-openai
-python-dotenv
-sweetbean
