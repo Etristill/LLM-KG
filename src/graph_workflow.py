@@ -4,24 +4,19 @@
 # - Controls when to generate, evaluate, and modify models
 # - Includes steps for combining promising models
 # - Tracks how models relate to each other
-
-
 from typing import Dict, List, TypedDict, Optional
-from langgraph.graph import Graph, StateGraph
-from langchain_core.messages import BaseMessage
-from langchain_openai import ChatOpenAI
-import operator
 import logging
 import networkx as nx
 import numpy as np
 import ast
 import re
-
 from dataclasses import dataclass
+
 from .core import ModelState
 from .knowledge_graph import CognitiveKnowledgeGraph
 from .transformations import ThoughtTransformations
 from .evaluation import SimpleEvaluator
+from .llm_client import UnifiedLLMClient  
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +24,7 @@ class AgentState(TypedDict):
     """State maintained in the graph workflow."""
     current_model: ModelState
     knowledge: Dict
-    messages: List[BaseMessage]
+    messages: List[Dict[str, str]]  # Changed from BaseMessage to Dict
     next_step: str
     metrics: Dict
     thought_history: List[ModelState]  # Track sequence of thoughts
@@ -37,13 +32,14 @@ class AgentState(TypedDict):
 
 class ModelDiscoveryGraph:
     """Manages the discovery process combining MCTS exploration with Graph of Thoughts."""
-    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph, test_data: Dict):
+    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph, test_data: Dict, model_name: str = "claude-3-opus-20240229"):
         # Core components initialization
         self.kg = knowledge_graph
-        self.llm = ChatOpenAI(
-            model="gpt-4-turbo-preview",
-            temperature=0.7,
-        )
+        
+        # Initialize the unified LLM client
+        self.llm = UnifiedLLMClient(model_name=model_name)
+        
+        # Pass the same LLM client to transformations
         self.transformations = ThoughtTransformations(self.llm)
         self.evaluator = SimpleEvaluator(test_data)
         
@@ -58,6 +54,8 @@ class ModelDiscoveryGraph:
         
         # Performance tracking
         self.performance_cache = {}
+
+        logger.info(f"Initialized ModelDiscoveryGraph with model: {model_name}")
 
     async def run_workflow(self, state: AgentState) -> AgentState:
         """Execute the complete workflow with enhanced error handling."""
@@ -161,8 +159,8 @@ class ModelDiscoveryGraph:
                 {"role": "user", "content": prompt}
             ]
             
-            response = await self.llm.agenerate([messages])
-            response_text = response.generations[0][0].text
+            # Use unified client
+            response_text = await self.llm.generate(messages)
             
             # Debug logging to see what we're getting from LLM
             logger.debug(f"LLM Response:\n{response_text}")
@@ -355,7 +353,6 @@ Be creative and explore interesting mathematical structures!"""
     def _safe_parse_parameters(self, params_str: str) -> Dict[str, float]:
         """Parse parameter string into dictionary."""
         try:
-            # Debug logging
             logger.debug(f"Parsing parameters string: {params_str}")
             
             # Clean up the string
@@ -363,7 +360,7 @@ Be creative and explore interesting mathematical structures!"""
             if not params_str:
                 return {}
 
-            # If string is just "PARAMETERS:", return empty dict (>>>>>?)
+            # If string is just "PARAMETERS:", return empty dict
             if params_str.upper() == "PARAMETERS:":
                 return {}
 
@@ -371,7 +368,7 @@ Be creative and explore interesting mathematical structures!"""
             if params_str.upper().startswith("PARAMETERS:"):
                 params_str = params_str[len("PARAMETERS:"):].strip()
 
-            # Add braces if missing, this helps
+            # Add braces if missing
             if not params_str.startswith('{'):
                 params_str = '{' + params_str
             if not params_str.endswith('}'):
@@ -398,7 +395,6 @@ Be creative and explore interesting mathematical structures!"""
                     key = key.strip().strip('"').strip("'")
                     
                     # Extract the numeric value, handling scientific notation
-                    # This regex matches normal numbers and scientific notation
                     match = re.search(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', value)
                     if match:
                         value = float(match.group())
@@ -416,19 +412,19 @@ Be creative and explore interesting mathematical structures!"""
             return {}
 
     def validate_equation(self, state: ModelState) -> bool:
-            """Minimal validation to allow creative exploration."""
-            try:
-                equation = state.equations[0]
-                
-                # Only check that we have Q(t) and R(t) and balanced parentheses becazuse otherwise everything gets too tricky
-                basic_terms_present = 'Q(t' in equation and 'R(t' in equation
-                balanced_parens = equation.count('(') == equation.count(')')
-                
-                return basic_terms_present and balanced_parens
-                
-            except Exception as e:
-                logger.error(f"Error validating equation: {e}")
-                return False
+        """Minimal validation to allow creative exploration."""
+        try:
+            equation = state.equations[0]
+            
+            # Only check that we have Q(t) and R(t) and balanced parentheses
+            basic_terms_present = 'Q(t' in equation and 'R(t' in equation
+            balanced_parens = equation.count('(') == equation.count(')')
+            
+            return basic_terms_present and balanced_parens
+            
+        except Exception as e:
+            logger.error(f"Error validating equation: {e}")
+            return False
         
     def _extract_mechanisms(self, state: ModelState) -> List[str]:
         """Extract cognitive mechanisms from model state."""

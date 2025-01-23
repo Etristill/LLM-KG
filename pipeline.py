@@ -1,20 +1,20 @@
-# `pipeline.py`:
+# pipeline.py
 
 # - coordinates everything
 # - Balances exploration vs refinement
 # - Keeps track of the best models found
 # - Manages a pool of promising models
 
-# pipeline.py
-
 import asyncio
 from src.core import ModelState, generate_test_data
+from src.llm_client import UnifiedLLMClient
 from src.mcts_kg import EnhancedMCTS, MCTSNode
 from src.graph_workflow import ModelDiscoveryGraph, AgentState
 from src.evaluation import SimpleEvaluator
 from src.llm import EnhancedLLMInterface
 from src.enhanced_knowledge_graph import EnhancedKnowledgeGraph, MechanismInfo
 from src.transformations import ThoughtTransformations
+from src.config import Config
 import numpy as np
 from typing import Optional, Tuple, List, Dict
 import json
@@ -26,8 +26,24 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+# Load environment variables
 load_dotenv()
 
+# Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -40,13 +56,22 @@ logger = logging.getLogger(__name__)
 
 class EnhancedModelDiscoveryPipeline:
     def __init__(self, 
-                 use_mock_llm: bool = True,
-                 n_iterations: int = 50,
-                 exploration_constant: float = 1.414,
-                 use_csv: bool = True,
-                 knowledge_path: str = None):
+                model_name: str = "claude-3-opus-20240229",
+                use_mock_llm: bool = True,
+                n_iterations: int = 50,
+                exploration_constant: float = 1.414,
+                use_csv: bool = True,
+                knowledge_path: str = None):
         """Initialize the enhanced pipeline with both MCTS and workflow components"""
         logger.info("Initializing Enhanced Model Discovery Pipeline...")
+    
+        
+        # Validate model configuration
+        try:
+            self.config = Config(model_name)
+        except ValueError as e:
+            logger.error(f"Model configuration error: {e}")
+            raise
         
         # Initialize core components with enhanced knowledge graph
         self.test_data = generate_test_data(n_trials=100)
@@ -66,7 +91,7 @@ class EnhancedModelDiscoveryPipeline:
         
         self.mcts = EnhancedMCTS(self.kg, exploration_constant)
         self.evaluator = SimpleEvaluator(self.test_data)
-        self.llm = EnhancedLLMInterface(use_mock=use_mock_llm)
+        self.llm = EnhancedLLMInterface(model_name=model_name, use_mock=use_mock_llm)  # Updated initialization
         self.graph_workflow = ModelDiscoveryGraph(self.kg, test_data=self.test_data)
         
         self.n_iterations = n_iterations
@@ -96,6 +121,8 @@ class EnhancedModelDiscoveryPipeline:
         
         # State tracking
         self.is_running = True
+        
+        logger.info(f"Pipeline initialized with model: {model_name}")
 
     def _initialize_mock_knowledge(self):
         """Initialize mock knowledge graph with basic mechanisms"""
@@ -472,7 +499,8 @@ class EnhancedModelDiscoveryPipeline:
                 'settings': {
                     'n_iterations': self.n_iterations,
                     'exploration_constant': self.mcts.exploration_constant,
-                    'use_mock_llm': self.llm.use_mock
+                    'use_mock_llm': self.llm.use_mock,
+                    'model_name': self.config.model_name  # Added model name to results
                 },
                 'successful_mechanisms': list(self.metrics['successful_mechanisms'])
             }
@@ -519,7 +547,7 @@ class EnhancedModelDiscoveryPipeline:
     def _export_graph_data(self):
         """Export graph data for visualization"""
         try:
-            # Export Neo4j compatible data, so far we are not using it
+            # Export Neo4j compatible data
             neo4j_data = self.kg.export_to_neo4j()
             if neo4j_data:
                 filename = f"graph_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -533,12 +561,13 @@ class EnhancedModelDiscoveryPipeline:
 async def main():
     """Main entry point with enhanced error handling"""
     try:
-        # Check for knowledge CSV file, if available. otherwuse use mock knowledge
+        # Check for knowledge CSV file
         default_knowledge_path = "knowledge.csv"
         use_csv = Path(default_knowledge_path).exists()
         
         # Init pipeline with configuration
         pipeline = EnhancedModelDiscoveryPipeline(
+            model_name="claude-3-opus-20240229",  # Specify the model explicitly
             use_mock_llm=False,
             n_iterations=50,
             exploration_constant=1.414,
