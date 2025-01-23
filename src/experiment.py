@@ -13,14 +13,6 @@ from sweetbean.variable import (
 )
 import random
 import numpy as np
-from scipy.stats import beta
-
-
-def merge_dicts(defaults, overrides):
-    """Merges two dictionaries, giving precedence to overrides."""
-    if overrides is None:
-        overrides = {}
-    return {**defaults, **overrides}
 
 class ExperimentInfo:
     """Structured information about 2-armed bandit experiments"""
@@ -28,7 +20,9 @@ class ExperimentInfo:
     n_trials: int
     p_init: Tuple[float, float]
     sigma: Tuple[float, float]
-    hazard_rate: float
+    decay_rate: Tuple[float, float]
+    decay_center: Tuple[float, float]
+    hazard_rate: Tuple[float, float]
 
 def generate_experiment(experiment_info, generate_html=False):
     '''
@@ -80,7 +74,16 @@ def generate_experiment(experiment_info, generate_html=False):
     return experiment
 
 
-def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), hazard_rate=0.05, bounds=(0, 1), experiment_info=None):
+def generate_bandit_trials(
+    n_trials=100,
+    p_init=(0.5, 0.5),
+    sigma=(0.02, 0.02),
+    decay_rate=(0.05, 0.05),
+    decay_center=(0.5, 0.5),
+    hazard_rate=(0.05, 0.05),
+    bounds=(0, 1),
+    experiment_info=None
+):
     """
     Generate a series of reward probabilities and sampled rewards for a 2-armed bandit with drifting probabilities and sudden changes.
 
@@ -88,7 +91,9 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
         n_trials (int): Number of trials.
         p_init (tuple): Initial reward probabilities for both arms (p1, p2).
         sigma (tuple): Standard deviation of the Gaussian noise added per trial for both arms (sigma1, sigma2).
-        hazard_rate (float): Probability per trial of switching to completely new random reward probabilities.
+        decay_rate (tuple): Rate at which the reward probabilities decay towards some "default" values (decay_center) for both arms (decay_rate1, decay_rate2).
+        decay_center (tuple): The "default" values which the reward probabilities decay towards, according to the decay_rate, for both arms (decay_center, decay_center).
+        hazard_rate (float): Probability per trial of switching to completely new random reward probabilities for both arms (hazard_rate1, hazard_rate2).
         bounds (tuple): Lower and upper bounds for reward probabilities (default: (0, 1)).
 
     Returns:
@@ -96,14 +101,24 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
             np.ndarray: An (n_trials, 2) array of reward probabilities for each arm over time.
             np.ndarray: An (n_trials, 2) array of sampled rewards (0 or 1) for each arm.
     """
+    def random_walk_update(prob, sigma, decay_rate, decay_center, bounds):
+        # Daw et al. (2006), Nature. Updated probability is weighted sum of current probability
+        # and "decay center", plus zero-mean Gaussian noise.
+        new_prob = (
+            (1 - decay_rate) * prob + decay_rate * decay_center +
+            np.random.normal(0, sigma)
+        )
+        return np.clip(new_prob, *bounds)
+
     if experiment_info is not None:
         n_trials = experiment_info.n_trials
         p_init = experiment_info.p_init
         sigma = experiment_info.sigma
+        decay_rate = experiment_info.decay_rate
+        decay_center = experiment_info.decay_center
         hazard_rate = experiment_info.hazard_rate
 
     p1, p2 = p_init
-    sigma1, sigma2 = sigma
 
     probabilities = np.zeros((n_trials, 2))
     rewards = np.zeros((n_trials, 2), dtype=int)
@@ -115,8 +130,8 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
             p1, p2 = np.random.uniform(bounds[0], bounds[1], 2)
         else:
             # Drift normally
-            p1 = np.clip(p1 + np.random.normal(0, sigma1), bounds[0], bounds[1])
-            p2 = np.clip(p2 + np.random.normal(0, sigma2), bounds[0], bounds[1])
+            p1 = random_walk_update(p1, sigma[0], decay_rate[0], decay_center[0], bounds)
+            p2 = random_walk_update(p2, sigma[1], decay_rate[1], decay_center[1], bounds)
 
         probabilities[t] = [p1, p2]
         rewards[t] = [np.random.rand() < p1, np.random.rand() < p2]
