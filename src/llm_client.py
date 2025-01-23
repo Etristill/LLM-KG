@@ -26,19 +26,27 @@ class UnifiedLLMClient:
     
     async def _generate_anthropic(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate response using Anthropic's Claude"""
-        # Convert messages to Anthropic format
-        messages = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in messages
-        ]
+        system_message = ""
+        user_messages = []
         
-        model_kwargs = self.config.get_model_kwargs()
-        model_kwargs.update(kwargs)
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            else:
+                user_messages.append(msg)
         
-        response = await self.client.messages.create(
+        # Convert to Anthropic format
+        anthropic_messages = [{
+            "role": "user" if msg["role"] == "user" else "assistant",
+            "content": msg["content"]
+        } for msg in user_messages]
+
+        # Use create_sync for synchronous call since Anthropic client doesn't support async
+        response = self.client.messages.create(
             model=self.config.model_name,
-            messages=messages,
-            **model_kwargs
+            max_tokens=1000,
+            system=system_message,
+            messages=anthropic_messages
         )
         
         return response.content[0].text

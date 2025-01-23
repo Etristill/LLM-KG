@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import pandas as pd
 import json
 import logging
-from core import ModelState
+from .core import ModelState
 import numpy as np
 
 logger = logging.getLogger(__name__)
