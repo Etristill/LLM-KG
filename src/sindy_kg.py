@@ -4,10 +4,10 @@ import torch
 from copy import deepcopy
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.closedloop_rl.theorist import rl_sindy_theorist
-from src.closedloop_rl.utils.convert_dataset import convert_dataset
-from src.closedloop_rl.resources.rnn_utils import DatasetRNN
-from src.closedloop_rl.resources.model_evaluation import log_likelihood, bayesian_information_criterion, akaike_information_criterion
+from src.resources_rlsindy.theorist import rl_sindy_theorist
+from src.resources_rlsindy.utils.convert_dataset import convert_dataset
+from src.resources_rlsindy.resources.rnn_utils import DatasetRNN
+from src.resources_rlsindy.resources.model_evaluation import log_likelihood, bayesian_information_criterion, akaike_information_criterion
 
 
 def translate_sindy_to_kg(features, file_to_save):
@@ -87,7 +87,7 @@ def sindy_pipeline(path_to_dataset: str, device: torch.device = None, epochs: in
 
 
 if __name__=='__main__':
-    path_to_data = 'src/closedloop_rl/data/sugawara2021_143_processed_short.csv'
+    path_to_data = 'src/resources_rlsindy/data/sugawara2021_143_processed_short.csv'
     
     metrics = sindy_pipeline(path_to_data, epochs=16, verbose=True, participant_embedding=True)
     
