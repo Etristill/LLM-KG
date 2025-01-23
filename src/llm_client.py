@@ -1,5 +1,3 @@
-# src/llm_client.py
-
 from typing import List, Dict, Any, Optional
 import anthropic
 import openai
@@ -12,9 +10,9 @@ class UnifiedLLMClient:
         self.config = Config(model_name)
         
         if self.config.is_anthropic:
-            self.client = anthropic.Client(api_key=self.config.api_key)
+            self.client = anthropic.Anthropic(api_key=self.config.api_key)
         else:
-            self.client = openai.Client(api_key=self.config.api_key)
+            self.client = openai.OpenAI(api_key=self.config.api_key)
     
     async def generate(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate response from the model"""
@@ -28,24 +26,18 @@ class UnifiedLLMClient:
     
     async def _generate_anthropic(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate response using Anthropic's Claude"""
-        # Convert messages to Anthropic format!!!
-        formatted_messages = []
-        for msg in messages:
-            role = msg["role"]
-            if role == "user":
-                formatted_messages.append({"role": "user", "content": msg["content"]})
-            elif role == "assistant":
-                formatted_messages.append({"role": "assistant", "content": msg["content"]})
-            elif role == "system":
-                # !!!!Anthropic handles system messages differently
-                formatted_messages.insert(0, {"role": "user", "content": msg["content"]})
+        # Convert messages to Anthropic format
+        messages = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in messages
+        ]
         
         model_kwargs = self.config.get_model_kwargs()
         model_kwargs.update(kwargs)
         
         response = await self.client.messages.create(
             model=self.config.model_name,
-            messages=formatted_messages,
+            messages=messages,
             **model_kwargs
         )
         
@@ -53,7 +45,6 @@ class UnifiedLLMClient:
     
     async def _generate_openai(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate response using OpenAI models"""
-        # OpenAI already accepts messages in the correct format
         model_kwargs = self.config.get_model_kwargs()
         model_kwargs.update(kwargs)
         

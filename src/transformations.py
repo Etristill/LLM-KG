@@ -1,11 +1,11 @@
-# src/transformations.py
-
 from typing import List
+import numpy as np
 from .core import ModelState
-from .llm_client import UnifiedLLMClient 
+from .llm_client import UnifiedLLMClient
 
 class ThoughtTransformations:
-    def __init__(self, llm):
+    def __init__(self, llm: UnifiedLLMClient):
+        """Initialize with a UnifiedLLMClient instance"""
         self.llm = llm
 
     async def aggregate_thoughts(self, thoughts: List[ModelState]) -> ModelState:
@@ -35,6 +35,7 @@ class ThoughtTransformations:
             print(f"Error in aggregate_thoughts: {e}")
             # Fallback to most complex thought if aggregation fails
             return max(thoughts, key=lambda t: len(t.equations[0].split())).copy()
+
 
     async def refine_thought(self, thought: ModelState) -> ModelState:
         """Refine a thought through iteration"""

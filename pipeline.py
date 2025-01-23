@@ -1,13 +1,8 @@
 # pipeline.py
 
-# - coordinates everything
-# - Balances exploration vs refinement
-# - Keeps track of the best models found
-# - Manages a pool of promising models
-
 import asyncio
 from src.core import ModelState, generate_test_data
-from src.llm_client import UnifiedLLMClient
+from src.llm_client import UnifiedLLMClient  
 from src.mcts_kg import EnhancedMCTS, MCTSNode
 from src.graph_workflow import ModelDiscoveryGraph, AgentState
 from src.evaluation import SimpleEvaluator
@@ -26,21 +21,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-# Load environment variables
 load_dotenv()
 
 # Setup logging
@@ -57,7 +37,7 @@ logger = logging.getLogger(__name__)
 class EnhancedModelDiscoveryPipeline:
     def __init__(self, 
                 model_name: str = "claude-3-opus-20240229",
-                use_mock_llm: bool = True,
+                use_mock_llm: bool = False,  #
                 n_iterations: int = 50,
                 exploration_constant: float = 1.414,
                 use_csv: bool = True,
@@ -65,7 +45,6 @@ class EnhancedModelDiscoveryPipeline:
         """Initialize the enhanced pipeline with both MCTS and workflow components"""
         logger.info("Initializing Enhanced Model Discovery Pipeline...")
     
-        
         # Validate model configuration
         try:
             self.config = Config(model_name)
@@ -89,9 +68,10 @@ class EnhancedModelDiscoveryPipeline:
         # Initialize additional mechanisms
         self._initialize_custom_mechanisms()
         
+        self.llm = UnifiedLLMClient(model_name=model_name)  
         self.mcts = EnhancedMCTS(self.kg, exploration_constant)
         self.evaluator = SimpleEvaluator(self.test_data)
-        self.llm = EnhancedLLMInterface(model_name=model_name, use_mock=use_mock_llm)  # Updated initialization
+        self.transformations = ThoughtTransformations(self.llm)  
         self.graph_workflow = ModelDiscoveryGraph(self.kg, test_data=self.test_data)
         
         self.n_iterations = n_iterations
@@ -316,8 +296,9 @@ class EnhancedModelDiscoveryPipeline:
             if len(self.thought_pool) > self.max_thought_pool_size:
                 # Keep best thoughts based on both score and diversity
                 self.thought_pool.sort(
-                    key=lambda x: (x.score if x.score is not None else float('-inf')) +
-                                self._compute_diversity_bonus(x),
+                    key=lambda x: (
+                        x.score if x.score is not None else float('-inf')
+                    ) + self._compute_diversity_bonus(x),
                     reverse=True
                 )
                 self.thought_pool = self.thought_pool[:self.max_thought_pool_size]
@@ -359,7 +340,7 @@ class EnhancedModelDiscoveryPipeline:
             return 0.0
 
     def _extract_mechanisms(self, state: ModelState) -> List[str]:
-        """Extract cognitive mechanisms from model state with enhanced detection"""
+        """Extract cognitive mechanisms from model state"""
         mechanisms = []
         equation = state.equations[0].lower()
         
@@ -402,7 +383,6 @@ class EnhancedModelDiscoveryPipeline:
                         logger.debug(f"Mechanism {mechanism} stats: {perf_stats}")
                     
                 logger.debug(f"Updated KG with model for mechanisms: {mechanisms}")
-                
                 # Export graph data periodically
                 if len(self.metrics['kg_updates']) % 50 == 0:
                     self._export_graph_data()
@@ -499,8 +479,7 @@ class EnhancedModelDiscoveryPipeline:
                 'settings': {
                     'n_iterations': self.n_iterations,
                     'exploration_constant': self.mcts.exploration_constant,
-                    'use_mock_llm': self.llm.use_mock,
-                    'model_name': self.config.model_name  # Added model name to results
+                    'model_name': self.config.model_name
                 },
                 'successful_mechanisms': list(self.metrics['successful_mechanisms'])
             }
@@ -527,7 +506,7 @@ class EnhancedModelDiscoveryPipeline:
                     'thought_latencies': self.metrics['thought_latencies'],
                     'aggregation_counts': self.metrics['aggregation_counts'],
                     'refinement_counts': self.metrics['refinement_counts'],
-                    'kg_updates': self.metrics['kg_updates'][-50:],  # Last 50 KG updates
+                    'kg_updates': self.metrics['kg_updates'][-50:],
                     'successful_mechanisms': list(self.metrics['successful_mechanisms']),
                     'evaluation_times': self.metrics['evaluation_times'],
                     'summary_stats': {
@@ -568,7 +547,7 @@ async def main():
         # Init pipeline with configuration
         pipeline = EnhancedModelDiscoveryPipeline(
             model_name="claude-3-opus-20240229",  # Specify the model explicitly
-            use_mock_llm=False,
+            use_mock_llm=False,  # Changed to False to use real LLM
             n_iterations=50,
             exploration_constant=1.414,
             use_csv=use_csv,
