@@ -1,9 +1,11 @@
+#this is participant.py
+# 
 import openai
 from dotenv import load_dotenv
 import os
 import numpy as np
 import pandas as pd
-from experiment import ExperimentInfo
+from .experiment import ExperimentInfo
 
 class ParticipantInfo:
     """Structured information about 2-armed bandit experiments"""
@@ -71,7 +73,7 @@ def run_experiment(trial_sequence, participant_info, experiment_info):
 
 
 # Example usage
-from experiment import generate_experiment, generate_bandit_trials
+from .experiment import generate_experiment, generate_bandit_trials
 
 # specify experiment parameters
 experiment_info = ExperimentInfo()
