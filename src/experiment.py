@@ -1,3 +1,4 @@
+from typing import Dict, List, Optional, Set, Tuple, Any
 from sweetbean import Block, Experiment
 from sweetbean.stimulus import Bandit, Text
 from sweetbean.variable import (
@@ -10,13 +11,22 @@ from sweetbean.variable import (
 import random
 import numpy as np
 
-def generate_experiment(reward_sequence, generate_html=False):
+class ExperimentInfo:
+    """Structured information about 2-armed bandit experiments"""
+    id: int
+    n_trials: int
+    p_init: Tuple[float, float]
+    sigma: Tuple[float, float]
+    hazard_rate: float
+
+def generate_experiment(experiment_info, generate_html=False):
     '''
     Generate a bandit task experiment with a given reward sequence.
 
     Parameters:
     reward_sequence (list): A numpy array of shape (n_trials, 2) where each row is a pair of rewards for the two bandits.
     '''
+    reward_sequence = generate_bandit_trials(experiment_info)
 
     # convert the reward sequence to a SweetBean timeline
     timeline = []
@@ -59,7 +69,7 @@ def generate_experiment(reward_sequence, generate_html=False):
     return experiment
 
 
-def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), hazard_rate=0.05, bounds=(0, 1)):
+def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), hazard_rate=0.05, bounds=(0, 1), experiment_info=None):
     """
     Generate a series of reward probabilities and sampled rewards for a 2-armed bandit with drifting probabilities and sudden changes.
 
@@ -75,6 +85,12 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
             np.ndarray: An (n_trials, 2) array of reward probabilities for each arm over time.
             np.ndarray: An (n_trials, 2) array of sampled rewards (0 or 1) for each arm.
     """
+    if experiment_info is not None:
+        n_trials = experiment_info.n_trials
+        p_init = experiment_info.p_init
+        sigma = experiment_info.sigma
+        hazard_rate = experiment_info.hazard_rate
+
     p1, p2 = p_init
     sigma1, sigma2 = sigma
 
@@ -99,11 +115,16 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
 
 
 # Example usage:
-n_trials = 100
-reward_probabilities = (0.7, 0.3)  # Arm 0 has 70% reward probability, Arm 1 has 30%
-sigma = (0.02, 0.02)
-hazard_rate = 0.05
-trial_sequence = generate_bandit_trials(n_trials, reward_probabilities, sigma, hazard_rate)
-# print(trial_sequence)
-# Generate an experiment with the trial sequence
-generate_experiment(trial_sequence)
+
+# specify experiment parameters
+experiment_info = ExperimentInfo()
+experiment_info.id = "1"
+experiment_info.n_trials = 10
+experiment_info.p_init = (0.7, 0.3)
+experiment_info.sigma = (0.02, 0.02)
+experiment_info.hazard_rate = 0.05
+
+trial_sequence = generate_bandit_trials(experiment_info=experiment_info)
+
+# Alternatively, we can generate the entire experiment
+# generate_experiment(experiment_info)
