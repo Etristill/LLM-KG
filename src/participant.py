@@ -2,6 +2,7 @@ import openai
 from dotenv import load_dotenv
 import os
 import numpy as np
+import pandas as pd
 
 def generate(prompt):
     load_dotenv()
@@ -26,7 +27,7 @@ def execute_experiment(experiment):
     print(data)
     return data
 
-def execute_experiment_simple(trial_sequence, age, gender):
+def execute_experiment_simple(trial_sequence, age, gender, participant_id):
 
     n_trials = len(trial_sequence)
     rewards = np.zeros(n_trials)
@@ -47,7 +48,9 @@ def execute_experiment_simple(trial_sequence, age, gender):
         rewards[trial] = reward
         prompt += "You chose bandit " + str(llm_choice) + ". You received a reward of " + str(reward) + ". "
 
-    return rewards, choices
+    choices = np.where(choices == 1)[1]
+    df = pd.DataFrame({"trial": np.arange(n_trials), "choice": choices, "reward": rewards, "session": participant_id})
+    return df
 
 
 # Example usage
@@ -62,7 +65,7 @@ trial_sequence = generate_bandit_trials(n_trials, reward_probabilities)
 experiment = generate_experiment(trial_sequence)
 
 # Run the experiment on the synthetic participant
-rewards, choices = execute_experiment_simple(trial_sequence, "18", "male")
+rewards, choices = execute_experiment_simple(trial_sequence, "18", "male", participant_id="1")
 
 print(trial_sequence)
 print(rewards)
@@ -71,3 +74,5 @@ print(choices)
 # Alternative using SweetBean
 # data = execute_experiment(experiment)
 # print(data)
+
+# session, choice, reward
