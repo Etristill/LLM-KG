@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional
 import numpy as np
 import uuid
+from experiment import generate_bandit_trials, generate_experiment
+from participant import execute_experiment_simple
 
 @dataclass
 class ModelState:
@@ -42,18 +44,20 @@ class ModelState:
 
 def generate_test_data(n_trials: int = 100) -> Dict:
     """Generate synthetic two-armed bandit data"""
-    np.random.seed(42)  
+    
+    reward_probabilities = (0.7, 0.3)  # Arm 0 has 70% reward probability, Arm 1 has 30%
+    trial_sequence = generate_bandit_trials(n_trials, reward_probabilities)
+
+    # Generate an experiment with the trial sequence
+    experiment = generate_experiment(trial_sequence)
+
+    # Run the experiment on the synthetic participant
+    rewards, choices = execute_experiment_simple(trial_sequence, "18", "male")
     
     data = {
         'timestamps': np.arange(n_trials),
-        'actions': np.random.binomial(1, 0.5, n_trials),  # Random actions (0 or 1)
-        'rewards': np.zeros(n_trials)
+        'actions': choices,
+        'rewards': rewards
     }
-    
-    # Generate rewards based on action chosen
-    # Action 1 has 0.7 probability of reward, Action 0 has 0.3, this is totally made up for now
-    for t in range(n_trials):
-        prob = 0.7 if data['actions'][t] == 1 else 0.3
-        data['rewards'][t] = np.random.binomial(1, prob)
     
     return data
