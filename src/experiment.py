@@ -1,6 +1,6 @@
 #this is experiment.py
 
-# the new implementation incorporates a weighted decay mechanism. 
+#he new implementation incorporates a weighted decay mechanism. 
 # Probabilities drift toward a "center" (decay_center) at a rate determined by decay_rate.
 
 

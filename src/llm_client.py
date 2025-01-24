@@ -44,7 +44,7 @@ class UnifiedLLMClient:
         # Use create_sync for synchronous call since Anthropic client doesn't support async
         response = self.client.messages.create(
             model=self.config.model_name,
-            max_tokens=1000,
+            max_tokens=2000,
             system=system_message,
             messages=anthropic_messages
         )

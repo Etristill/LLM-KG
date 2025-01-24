@@ -28,7 +28,12 @@ class AgentState(TypedDict):
 
 class ModelDiscoveryGraph:
     """Manages the discovery process combining MCTS exploration with Graph of Thoughts."""
-    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph, test_data: Dict, model_name: str = "claude-3-opus-20240229"):
+    def __init__(
+        self, 
+        knowledge_graph: CognitiveKnowledgeGraph, 
+        test_data: Dict, 
+        model_name: str = "claude-3-opus-20240229"
+    ):
         # Core components initialization
         self.kg = knowledge_graph
         
@@ -81,6 +86,7 @@ class ModelDiscoveryGraph:
                 state = await self.refine_thought_node(state)
             
             # Standard evaluation and updates
+            # -- Call evaluate_model_node (it calls the evaluator synchronously now)
             state = await self.evaluate_model_node(state)
             state = await self.update_knowledge_node(state)
             
@@ -102,7 +108,9 @@ class ModelDiscoveryGraph:
                 logger.error("No current model to evaluate")
                 return state
                 
-            score = await self.evaluator.evaluate_model(state["current_model"])
+            # >>>>>>>>>> IMPORTANT CHANGE! <<<<<<<<<<
+            # Call synchronously. Do *not* await this.
+            score = self.evaluator.evaluate_model(state["current_model"])
             
             # Assign score to the model state
             state["current_model"].score = score
@@ -162,10 +170,9 @@ class ModelDiscoveryGraph:
                 {"role": "user", "content": prompt}
             ]
             
-            # Use unified client
+            # Use unified client (async call to LLM)
             response_text = await self.llm.generate(messages)
             
-            # Debug logging to see what we're getting from LLM
             logger.debug(f"LLM Response:\n{response_text}")
             
             new_model = self._parse_llm_response(response_text)
@@ -178,7 +185,7 @@ class ModelDiscoveryGraph:
                 state["current_model"] = new_model
                 self._add_to_thought_graph(new_model, "generation")
             else:
-                # If parsing failed, keep the current model instead of None
+                # If parsing failed, keep the current model
                 logger.warning("Failed to parse LLM response, keeping current model")
                 new_model = state["current_model"].copy()
                 
@@ -309,9 +316,9 @@ You can:
 KEY FORMAT REQUIREMENTS:
 - All parameters must be plain numeric values. For example, do not write "2 * pi / 25", just approximate it to 0.2513274.
 Use PLAIN text notation (not LaTeX)!!!!!!!!!
-   - Write 'alpha' not '\alpha'
+   - Write 'alpha' not '\\alpha'
    - Use simple functions like 'exp(x)' not 'e^x'
-   - No \[ or \] or \frac notation
+   - No \\[ or \\] or \\frac notation
 
 Just ensure your equation uses Q(t) and R(t) terms.
 
@@ -491,7 +498,10 @@ Be creative and explore interesting mathematical structures!"""
                 if nx.has_path(self.thought_graph, root, model.id):
                     paths = list(nx.all_simple_paths(self.thought_graph, root, model.id))
                     if paths:
-                        max_path_length = max(max_path_length, max(len(path) for path in paths))
+                        max_path_length = max(
+                            max_path_length, 
+                            max(len(path) for path in paths)
+                        )
             
             metrics = {
                 "volume": volume,
