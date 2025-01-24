@@ -2,6 +2,7 @@ import sys, os
 
 import torch
 from copy import deepcopy
+import csv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.src_rlsindy.theorist import rl_sindy_theorist
@@ -11,7 +12,63 @@ from src.src_rlsindy.resources.model_evaluation import log_likelihood, bayesian_
 
 
 def translate_sindy_to_kg(features, file_to_save):
-    pass
+    """
+    Translate SINDy equations into a CSV file with source_nodes and target_nodes and their equations.
+    
+    Args:
+        features (dict): Dictionary containing SINDy equations and coefficients
+        file_to_save (str): Path to save the CSV file
+    """
+    if not file_to_save:
+        return
+    
+    # Create list to store all rows
+    rows = []
+    
+    # Header for the CSV
+    header = ['source_node', 'target_node', 'edge_relation']
+    
+    # Target nodes we want to track
+    target_nodes = list(features[0].keys())
+    
+    # First process all P_ids
+
+    for participant_id, participant_data in features.items():
+        for target in target_nodes:
+            if target in participant_data:
+            
+                equation = participant_data[target][-1][0]
+                
+                # Create row with P_id
+                row = [
+                    f"P_{participant_id}",  # source_node
+                    target+"="+equation,    # target_node
+                    "has mechanism"         # equation
+                ]
+                rows.append(row)
+
+                #TODO: Check for E_0 nodes that equation did not appear already --> Not multiple times the same node-pairs
+                row = [
+                    "E_0",                   # source_node
+                    target+"="+equation,     # target_node
+                    "appeared"               # equation
+                    ]
+                rows.append(row)
+
+                row = [
+                    equation,               # source_node
+                    target,                 # target_node
+                    "is mechanism in"       # equation
+                    ]
+                rows.append(row)
+
+    # Save to CSV file        
+    with open(file_to_save, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+    print(f"\nData saved to {file_to_save}")
+
 
 def sindy_pipeline(path_to_dataset: str, device: torch.device = None, epochs: int = 128, ratio_train_test: float = 0.8, verbose: bool = False, participant_embedding=True, file_to_save: str = None):
     
@@ -80,8 +137,8 @@ def sindy_pipeline(path_to_dataset: str, device: torch.device = None, epochs: in
             features_id[m] = (tuple(features_m), tuple(coeffs_m), sindy_models[m].equations())
         
         features[id] = deepcopy(features_id)
-        
-        translate_sindy_to_kg(features, file_to_save)
+    translate_sindy_to_kg(features, file_to_save)    
+    
     
     return (-ll_rnn, -ll_sindy), (bic_rnn, bic_sindy), (aic_rnn, aic_sindy)
 
@@ -89,7 +146,10 @@ def sindy_pipeline(path_to_dataset: str, device: torch.device = None, epochs: in
 if __name__=='__main__':
     path_to_data = 'src/src_rlsindy/data/sugawara2021_143_processed_short.csv'
     
-    metrics = sindy_pipeline(path_to_data, epochs=16, verbose=True, participant_embedding=True)
+    # Add the output path for sindy_equations.csv
+    output_path = 'database/sindy_equations.csv'
+
+    metrics = sindy_pipeline(path_to_data, epochs=16, verbose=True, participant_embedding=True, file_to_save=output_path)
     
     print(f'NLL RNN: {metrics[0][0]}')
     print(f'NLL SINDy: {metrics[0][1]}')

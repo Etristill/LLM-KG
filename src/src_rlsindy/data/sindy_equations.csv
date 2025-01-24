@@ -1,0 +1,64 @@
+source_node,target_node,edge_relation
+P_0,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_0,beta_c=0.5799630880355835 1,has mechanism
+E_0,beta_c=0.5799630880355835 1,appeared
+0.5799630880355835 1,beta_c,is mechanism in
+P_0,x_V_LR=0.539 1,has mechanism
+E_0,x_V_LR=0.539 1,appeared
+0.539 1,x_V_LR,is mechanism in
+P_0,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_0,x_V_nc=1.000 x_V_nc[k],has mechanism
+E_0,x_V_nc=1.000 x_V_nc[k],appeared
+1.000 x_V_nc[k],x_V_nc,is mechanism in
+P_0,x_C=0.219 1 + -0.102 x_C[k] + -0.107 c_a_repeat[k] + 0.432 x_C[k]^2 + 0.200 x_C[k] c_a_repeat[k] + -0.107 c_a_repeat[k]^2,has mechanism
+E_0,x_C=0.219 1 + -0.102 x_C[k] + -0.107 c_a_repeat[k] + 0.432 x_C[k]^2 + 0.200 x_C[k] c_a_repeat[k] + -0.107 c_a_repeat[k]^2,appeared
+0.219 1 + -0.102 x_C[k] + -0.107 c_a_repeat[k] + 0.432 x_C[k]^2 + 0.200 x_C[k] c_a_repeat[k] + -0.107 c_a_repeat[k]^2,x_C,is mechanism in
+P_0,x_C_nc=0.301 1 + 0.234 x_C_nc[k] + -0.079 x_C_nc[k]^2,has mechanism
+E_0,x_C_nc=0.301 1 + 0.234 x_C_nc[k] + -0.079 x_C_nc[k]^2,appeared
+0.301 1 + 0.234 x_C_nc[k] + -0.079 x_C_nc[k]^2,x_C_nc,is mechanism in
+P_1,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_1,beta_c=0.0 1,has mechanism
+E_0,beta_c=0.0 1,appeared
+0.0 1,beta_c,is mechanism in
+P_1,x_V_LR=0.539 1,has mechanism
+E_0,x_V_LR=0.539 1,appeared
+0.539 1,x_V_LR,is mechanism in
+P_1,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_1,x_V_nc=0.138 1 + 1.000 x_V_nc[k],has mechanism
+E_0,x_V_nc=0.138 1 + 1.000 x_V_nc[k],appeared
+0.138 1 + 1.000 x_V_nc[k],x_V_nc,is mechanism in
+P_1,x_C=0.156 1 + 0.163 x_C[k] + -0.077 c_a_repeat[k] + 0.099 x_C[k]^2 + -0.077 c_a_repeat[k]^2,has mechanism
+E_0,x_C=0.156 1 + 0.163 x_C[k] + -0.077 c_a_repeat[k] + 0.099 x_C[k]^2 + -0.077 c_a_repeat[k]^2,appeared
+0.156 1 + 0.163 x_C[k] + -0.077 c_a_repeat[k] + 0.099 x_C[k]^2 + -0.077 c_a_repeat[k]^2,x_C,is mechanism in
+P_1,x_C_nc=0.379 1 + 0.207 x_C_nc[k] + -0.076 x_C_nc[k]^2,has mechanism
+E_0,x_C_nc=0.379 1 + 0.207 x_C_nc[k] + -0.076 x_C_nc[k]^2,appeared
+0.379 1 + 0.207 x_C_nc[k] + -0.076 x_C_nc[k]^2,x_C_nc,is mechanism in
+P_2,beta_v=0.0 1,has mechanism
+E_0,beta_v=0.0 1,appeared
+0.0 1,beta_v,is mechanism in
+P_2,beta_c=0.5799630880355835 1,has mechanism
+E_0,beta_c=0.5799630880355835 1,appeared
+0.5799630880355835 1,beta_c,is mechanism in
+P_2,x_V_LR=0.539 1,has mechanism
+E_0,x_V_LR=0.539 1,appeared
+0.539 1,x_V_LR,is mechanism in
+P_2,x_V_LR_cf=0.000,has mechanism
+E_0,x_V_LR_cf=0.000,appeared
+0.000,x_V_LR_cf,is mechanism in
+P_2,x_V_nc=1.000 x_V_nc[k],has mechanism
+E_0,x_V_nc=1.000 x_V_nc[k],appeared
+1.000 x_V_nc[k],x_V_nc,is mechanism in
+P_2,x_C=0.243 1 + -0.242 x_C[k] + -0.118 c_a_repeat[k] + 0.634 x_C[k]^2 + 0.282 x_C[k] c_a_repeat[k] + -0.118 c_a_repeat[k]^2,has mechanism
+E_0,x_C=0.243 1 + -0.242 x_C[k] + -0.118 c_a_repeat[k] + 0.634 x_C[k]^2 + 0.282 x_C[k] c_a_repeat[k] + -0.118 c_a_repeat[k]^2,appeared
+0.243 1 + -0.242 x_C[k] + -0.118 c_a_repeat[k] + 0.634 x_C[k]^2 + 0.282 x_C[k] c_a_repeat[k] + -0.118 c_a_repeat[k]^2,x_C,is mechanism in
+P_2,x_C_nc=0.303 1 + 0.205 x_C_nc[k],has mechanism
+E_0,x_C_nc=0.303 1 + 0.205 x_C_nc[k],appeared
+0.303 1 + 0.205 x_C_nc[k],x_C_nc,is mechanism in
