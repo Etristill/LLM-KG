@@ -1,4 +1,4 @@
-#this is src/core.py
+# src/core.py
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 import numpy as np
@@ -42,7 +42,7 @@ class ModelState:
             id=str(uuid.uuid4())
         )
 
-def generate_test_data(n_trials: int = 100) -> Dict:
+async def generate_test_data(n_trials: int = 100) -> Dict:
     """
     Generate synthetic two-armed bandit data for testing purposes.
     
@@ -73,7 +73,7 @@ def generate_test_data(n_trials: int = 100) -> Dict:
     participant_info.gender = "male"
 
     # Run the experiment and get results
-    df = run_experiment(trial_sequence, participant_info, experiment_info)
+    df = await run_experiment(trial_sequence, participant_info, experiment_info)
     
     # Transform the results into the expected format
     data = {
