@@ -55,15 +55,15 @@ async def generate_test_data(n_trials: int = 100) -> Dict:
             - actions: Array of choices made (0 or 1)
             - rewards: Array of rewards received
     """
-    # Create experiment info object
+    # Create experiment info object with standard parameters
     experiment_info = ExperimentInfo()
     experiment_info.id = "test"
     experiment_info.n_trials = n_trials
-    experiment_info.p_init = (0.7, 0.3)  # Arm 0 has 70% reward probability, Arm 1 has 30%
-    experiment_info.sigma = (0.02, 0.02)
-    experiment_info.hazard_rate = 0.05
+    experiment_info.p_init = (0.7, 0.3)  # Arm 0 has 70% reward probability initially
+    experiment_info.sigma = (0.02, 0.02)  # Moderate drift in probabilities
+    experiment_info.hazard_rate = 0.05    # 5% chance of sudden changes
 
-    # Generate trial sequence
+    # Generate trial sequence using simplified bandit task
     trial_sequence = generate_bandit_trials(experiment_info=experiment_info)
 
     # Create participant info
@@ -78,7 +78,7 @@ async def generate_test_data(n_trials: int = 100) -> Dict:
     # Transform the results into the expected format
     data = {
         'timestamps': np.arange(n_trials),
-        'actions': df['choice'].values,  # Convert from 1-based to 0-based indexing if needed
+        'actions': df['choice'].values,
         'rewards': df['reward'].values
     }
     
