@@ -1,3 +1,9 @@
+#this is experiment.py
+
+#he new implementation incorporates a weighted decay mechanism. 
+# Probabilities drift toward a "center" (decay_center) at a rate determined by decay_rate.
+
+
 from typing import Dict, List, Optional, Set, Tuple, Any
 from sweetbean import Block, Experiment
 from sweetbean.stimulus import Bandit, Text
@@ -13,11 +19,11 @@ import numpy as np
 
 class ExperimentInfo:
     """Structured information about 2-armed bandit experiments"""
-    id: int
+    id: str
     n_trials: int
-    p_init: Tuple[float, float]
-    sigma: Tuple[float, float]
-    hazard_rate: float
+    p_init: Tuple[float, float]  # Initial reward probabilities for each arm
+    sigma: Tuple[float, float]   # Standard deviation of random walk for each arm
+    hazard_rate: float          # Probability of sudden changes in reward probabilities
 
 def generate_experiment(experiment_info, generate_html=False):
     '''
@@ -26,7 +32,7 @@ def generate_experiment(experiment_info, generate_html=False):
     Parameters:
     reward_sequence (list): A numpy array of shape (n_trials, 2) where each row is a pair of rewards for the two bandits.
     '''
-    reward_sequence = generate_bandit_trials(experiment_info)
+    reward_sequence = generate_bandit_trials(experiment_info=experiment_info)
 
     # convert the reward sequence to a SweetBean timeline
     timeline = []
@@ -68,8 +74,15 @@ def generate_experiment(experiment_info, generate_html=False):
         experiment.to_html("bandit.html", path_local_download="bandit.json")
     return experiment
 
-
-def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), hazard_rate=0.05, bounds=(0, 1), experiment_info=None):
+def generate_bandit_trials(
+    n_trials=100,
+    p_init=(0.7, 0.3),
+    sigma=(0.02, 0.02),
+    hazard_rate=0.05,
+    bounds=(0, 1),
+    min_stable_trials=5,
+    experiment_info=None
+):
     """
     Generate a series of reward probabilities and sampled rewards for a 2-armed bandit with drifting probabilities and sudden changes.
 
@@ -79,52 +92,83 @@ def generate_bandit_trials(n_trials=100, p_init=(0.5, 0.5), sigma=(0.02, 0.02), 
         sigma (tuple): Standard deviation of the Gaussian noise added per trial for both arms (sigma1, sigma2).
         hazard_rate (float): Probability per trial of switching to completely new random reward probabilities.
         bounds (tuple): Lower and upper bounds for reward probabilities (default: (0, 1)).
+        min_stable_trials (int): Minimum number of trials between change points.
+        experiment_info (ExperimentInfo): Optional experiment info object containing parameters.
 
     Returns:
-        tuple:
-            np.ndarray: An (n_trials, 2) array of reward probabilities for each arm over time.
-            np.ndarray: An (n_trials, 2) array of sampled rewards (0 or 1) for each arm.
+        np.ndarray: An (n_trials, 2) array of sampled rewards (0 or 1) for each arm.
     """
+    # define function for updating the probability of a given arm according to a random walk process. 
+    def random_walk_update(prob, sigma, bounds):
+        # Add gaussian noise if sigma > 0
+        noise = np.random.normal(0, sigma) if sigma > 1e-6 else 0
+        new_prob = prob + noise
+        return np.clip(new_prob, *bounds)
+    
+    # define function for pre-determining the change points of a given arm
+    def sample_change_points(n_trials, hazard_rate, min_stable_trials):
+        # Change points randomly sampled with hazard_rate probability
+        change_points = []
+        current_trial = min_stable_trials  # start after the minimum stable period
+        while current_trial < n_trials:
+            if np.random.random() < hazard_rate:
+                change_points.append(current_trial)
+            current_trial += 1
+        return np.array(change_points)
+
+    # get experiment settings / parameters if provided
     if experiment_info is not None:
         n_trials = experiment_info.n_trials
         p_init = experiment_info.p_init
         sigma = experiment_info.sigma
         hazard_rate = experiment_info.hazard_rate
 
-    p1, p2 = p_init
-    sigma1, sigma2 = sigma
-
+    # declare local variables / initialise
     probabilities = np.zeros((n_trials, 2))
     rewards = np.zeros((n_trials, 2), dtype=int)
-    probabilities[0] = [p1, p2]
+    probabilities[0] = p_init
 
+    # sample change points for each arm
+    change_points_1 = sample_change_points(n_trials, hazard_rate, min_stable_trials)
+    change_points_2 = sample_change_points(n_trials, hazard_rate, min_stable_trials)
+    change_points = [change_points_1, change_points_2]
+
+    # iterate through trials
     for t in range(1, n_trials):
-        if np.random.rand() < hazard_rate:
-            # Change to completely new random probabilities
-            p1, p2 = np.random.uniform(bounds[0], bounds[1], 2)
-        else:
-            # Drift normally
-            p1 = np.clip(p1 + np.random.normal(0, sigma1), bounds[0], bounds[1])
-            p2 = np.clip(p2 + np.random.normal(0, sigma2), bounds[0], bounds[1])
-
-        probabilities[t] = [p1, p2]
-        rewards[t] = [np.random.rand() < p1, np.random.rand() < p2]
-
+        # generate trial-wise reward probabilities for each arm
+        for arm in range(2):
+            if t in change_points[arm]:
+                # Sudden change in probability
+                probabilities[t, arm] = np.random.uniform(*bounds)
+            else:
+                # Gradual random walk
+                probabilities[t, arm] = random_walk_update(
+                    probabilities[t - 1, arm],
+                    sigma[arm],
+                    bounds
+                )
+        
+        # sample rewards based on probabilities
+        rewards[t] = [
+            np.random.rand() < probabilities[t, 0],
+            np.random.rand() < probabilities[t, 1]
+        ]
 
     return rewards
 
 
-# Example usage:
+if __name__ == "__main__":
+    # Example usage:
+    # specify experiment parameters
+    experiment_info = ExperimentInfo()
+    experiment_info.id = "test"
+    experiment_info.n_trials = 100
+    experiment_info.p_init = (0.7, 0.3)  # Arm 0 starts better
+    experiment_info.sigma = (0.02, 0.02)  # Moderate drift
+    experiment_info.hazard_rate = 0.05    # 5% chance of sudden changes
 
-# specify experiment parameters
-experiment_info = ExperimentInfo()
-experiment_info.id = "1"
-experiment_info.n_trials = 10
-experiment_info.p_init = (0.7, 0.3)
-experiment_info.sigma = (0.02, 0.02)
-experiment_info.hazard_rate = 0.05
+    # Generate trial sequence
+    trial_sequence = generate_bandit_trials(experiment_info=experiment_info)
 
-trial_sequence = generate_bandit_trials(experiment_info=experiment_info)
-
-# Alternatively, we can generate the entire experiment
-# generate_experiment(experiment_info)
+    # Alternatively, generate the entire experiment
+    # generate_experiment(experiment_info)

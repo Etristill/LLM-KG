@@ -1,17 +1,11 @@
-#  src/transformations.py:
-
-# - Handles combining multiple models into better ones
-# - Uses LLM to refine models
-# - Creates prompts for model improvement
-# - Fallback strategies when LLM suggestions fail
-
-
-import numpy as np
 from typing import List
+import numpy as np
 from .core import ModelState
+from .llm_client import UnifiedLLMClient
 
 class ThoughtTransformations:
-    def __init__(self, llm):
+    def __init__(self, llm: UnifiedLLMClient):
+        """Initialize with a UnifiedLLMClient instance"""
         self.llm = llm
 
     async def aggregate_thoughts(self, thoughts: List[ModelState]) -> ModelState:
@@ -19,8 +13,13 @@ class ThoughtTransformations:
         try:
             # Create aggregation prompt
             prompt = self._create_aggregation_prompt([t.equations[0] for t in thoughts])
-            response = await self.llm.agenerate([[{"role": "user", "content": prompt}]])
-            new_equation = self._parse_equation(response.generations[0][0].text)
+            
+            # Use the unified client
+            messages = [
+                {"role": "user", "content": prompt}
+            ]
+            response = await self.llm.generate(messages)
+            new_equation = self._parse_equation(response)
             
             # Combine parameters
             combined_params = {}
@@ -37,12 +36,16 @@ class ThoughtTransformations:
             # Fallback to most complex thought if aggregation fails
             return max(thoughts, key=lambda t: len(t.equations[0].split())).copy()
 
+
     async def refine_thought(self, thought: ModelState) -> ModelState:
         """Refine a thought through iteration"""
         try:
             prompt = self._create_refinement_prompt(thought.equations[0])
-            response = await self.llm.agenerate([[{"role": "user", "content": prompt}]])
-            refined_equation = self._parse_equation(response.generations[0][0].text)
+            messages = [
+                {"role": "user", "content": prompt}
+            ]
+            response = await self.llm.generate(messages)
+            refined_equation = self._parse_equation(response)
             
             # If LLM refinement fails, fall back to parameter adjustment
             if not refined_equation:

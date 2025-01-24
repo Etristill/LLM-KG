@@ -3,28 +3,35 @@
 # - Handles communication with the language model
 # - Formats prompts and parses responses
 
-
 import os
 from typing import Dict, List, Optional, Set
+from anthropic import Anthropic
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI 
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
 import numpy as np
 from .core import ModelState
 from .knowledge_graph import CognitiveKnowledgeGraph
+from .config import Config
 
 load_dotenv()
 
 class EnhancedLLMInterface:
     """Enhanced LLM interface with sophisticated knowledge graph integration"""
-    def __init__(self, use_mock: bool = False):
+    def __init__(self, model_name: str = "claude-3-opus-20240229", use_mock: bool = False):
         self.use_mock = use_mock
         self.kg = CognitiveKnowledgeGraph()
+        
         if not use_mock:
-            self.client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            self.chat_model = ChatOpenAI(model="gpt-4-turbo-preview")
+            # Initialize configuration
+            self.config = Config(model_name)
+            
+            # Initialize appropriate client based on provider
+            if self.config.is_anthropic:
+                self.client = Anthropic(api_key=self.config.api_key)
+            else:
+                self.client = AsyncOpenAI(api_key=self.config.api_key)
         
         # Cache for frequent KG queries
         self.mechanism_cache: Dict[str, Dict] = {}
@@ -40,7 +47,7 @@ class EnhancedLLMInterface:
             return await self._llm_generate(state, context)
 
     async def _llm_generate(self, state: ModelState, context: Optional[Dict]) -> ModelState:
-        """Use OpenAI API with enhanced knowledge graph context"""
+        """Use LLM API with enhanced knowledge graph context"""
         try:
             # Extract mechanisms from current state
             mechanisms = self._extract_mechanisms(state)
@@ -48,13 +55,32 @@ class EnhancedLLMInterface:
             # Build comprehensive knowledge context
             knowledge_context = await self._build_knowledge_context(state, mechanisms)
             
-            prompt = ChatPromptTemplate.from_messages([
-                SystemMessage(content=self._create_system_prompt(knowledge_context)),
-                HumanMessage(content=self._create_detailed_prompt(state, knowledge_context))
-            ])
+            # Create messages
+            system_content = self._create_system_prompt(knowledge_context)
+            user_content = self._create_detailed_prompt(state, knowledge_context)
             
-            response = await self.chat_model.ainvoke(prompt)
-            new_state = self._parse_llm_response(response.content, state)
+            if self.config.is_anthropic:
+                response = await self.client.messages.create(
+                    model=self.config.model_name,
+                    messages=[
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": user_content}
+                    ],
+                    **self.config.get_model_kwargs()
+                )
+                response_content = response.content[0].text
+            else:
+                response = await self.client.chat.completions.create(
+                    model=self.config.model_name,
+                    messages=[
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": user_content}
+                    ],
+                    **self.config.get_model_kwargs()
+                )
+                response_content = response.choices[0].message.content
+            
+            new_state = self._parse_llm_response(response_content, state)
             
             # Update successful patterns if generation was valid
             if new_state != state:

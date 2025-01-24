@@ -1,27 +1,18 @@
 # src/graph_workflow.py
 
-# - Manages the step-by-step process of discovering models
-# - Controls when to generate, evaluate, and modify models
-# - Includes steps for combining promising models
-# - Tracks how models relate to each other
-
-
 from typing import Dict, List, TypedDict, Optional
-from langgraph.graph import Graph, StateGraph
-from langchain_core.messages import BaseMessage
-from langchain_openai import ChatOpenAI
-import operator
 import logging
 import networkx as nx
 import numpy as np
 import ast
 import re
-
 from dataclasses import dataclass
+
 from .core import ModelState
 from .knowledge_graph import CognitiveKnowledgeGraph
 from .transformations import ThoughtTransformations
 from .evaluation import SimpleEvaluator
+from .llm_client import UnifiedLLMClient  
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +20,7 @@ class AgentState(TypedDict):
     """State maintained in the graph workflow."""
     current_model: ModelState
     knowledge: Dict
-    messages: List[BaseMessage]
+    messages: List[Dict[str, str]]  # Changed from BaseMessage to Dict
     next_step: str
     metrics: Dict
     thought_history: List[ModelState]  # Track sequence of thoughts
@@ -37,13 +28,19 @@ class AgentState(TypedDict):
 
 class ModelDiscoveryGraph:
     """Manages the discovery process combining MCTS exploration with Graph of Thoughts."""
-    def __init__(self, knowledge_graph: CognitiveKnowledgeGraph, test_data: Dict):
+    def __init__(
+        self, 
+        knowledge_graph: CognitiveKnowledgeGraph, 
+        test_data: Dict, 
+        model_name: str = "claude-3-opus-20240229"
+    ):
         # Core components initialization
         self.kg = knowledge_graph
-        self.llm = ChatOpenAI(
-            model="gpt-4-turbo-preview",
-            temperature=0.7,
-        )
+        
+        # Initialize the unified LLM client
+        self.llm = UnifiedLLMClient(model_name=model_name)
+        
+        # Pass the same LLM client to transformations
         self.transformations = ThoughtTransformations(self.llm)
         self.evaluator = SimpleEvaluator(test_data)
         
@@ -59,6 +56,8 @@ class ModelDiscoveryGraph:
         # Performance tracking
         self.performance_cache = {}
 
+        logger.info(f"Initialized ModelDiscoveryGraph with model: {model_name}")
+
     async def run_workflow(self, state: AgentState) -> AgentState:
         """Execute the complete workflow with enhanced error handling."""
         try:
@@ -73,18 +72,21 @@ class ModelDiscoveryGraph:
             state = await self.generate_hypothesis_node(state)
             
             # Try thought aggregation if enough good thoughts
-            good_thoughts = [
-                t for t in state['active_thoughts'] 
-                if getattr(t, 'score', 0) > self.aggregation_threshold
-            ]
+            good_thoughts = []
+            for t in state['active_thoughts']:
+                if hasattr(t, 'score') and t.score is not None and t.score > self.aggregation_threshold:
+                    good_thoughts.append(t)
+                    
             if len(good_thoughts) >= 3:
                 state = await self.aggregate_thoughts_node(state, good_thoughts)
             
             # Try thought refinement if promising
-            if state['current_model'].score and state['current_model'].score > self.refinement_threshold:
+            current_score = getattr(state['current_model'], 'score', None)
+            if current_score is not None and current_score > self.refinement_threshold:
                 state = await self.refine_thought_node(state)
             
             # Standard evaluation and updates
+            # -- Call evaluate_model_node (it calls the evaluator synchronously now)
             state = await self.evaluate_model_node(state)
             state = await self.update_knowledge_node(state)
             
@@ -101,6 +103,13 @@ class ModelDiscoveryGraph:
     async def evaluate_model_node(self, state: AgentState) -> AgentState:
         """Evaluate model with comprehensive metrics."""
         try:
+            # Make sure we have a valid model state
+            if not state["current_model"]:
+                logger.error("No current model to evaluate")
+                return state
+                
+            # >>>>>>>>>> IMPORTANT CHANGE! <<<<<<<<<<
+            # Call synchronously. Do *not* await this.
             score = self.evaluator.evaluate_model(state["current_model"])
             
             # Assign score to the model state
@@ -161,10 +170,9 @@ class ModelDiscoveryGraph:
                 {"role": "user", "content": prompt}
             ]
             
-            response = await self.llm.agenerate([messages])
-            response_text = response.generations[0][0].text
+            # Use unified client (async call to LLM)
+            response_text = await self.llm.generate(messages)
             
-            # Debug logging to see what we're getting from LLM
             logger.debug(f"LLM Response:\n{response_text}")
             
             new_model = self._parse_llm_response(response_text)
@@ -177,7 +185,7 @@ class ModelDiscoveryGraph:
                 state["current_model"] = new_model
                 self._add_to_thought_graph(new_model, "generation")
             else:
-                # If parsing failed, keep the current model instead of None
+                # If parsing failed, keep the current model
                 logger.warning("Failed to parse LLM response, keeping current model")
                 new_model = state["current_model"].copy()
                 
@@ -186,42 +194,6 @@ class ModelDiscoveryGraph:
         except Exception as e:
             logger.error(f"Error in generate_hypothesis_node: {e}")
             return state
-
-    def _create_hypothesis_prompt(self, state: AgentState) -> str:
-        """Create prompt encouraging creative exploration."""
-        current_model = state["current_model"]
-        
-        return f"""Explore creative mathematical models for learning and decision-making.
-
-Current model:
-{current_model.equations[0]}
-
-Current parameters:
-{current_model.parameters}
-
-You can:
-- Combine multiple learning mechanisms
-- Add new parameters with any values
-- Try non-linear interactions
-- Experiment with temporal dependencies
-- Add memory effects
-- Consider additional mechanisms
-- Explore adaptation and meta-learning
-KEY FORMAT REQUIREMENTS:
-- All parameters must be plain numeric values. For example, do not write "2 * pi / 25", just approximate it to 0.2513274.
-Use PLAIN text notation (not LaTeX)!!!!!!!!!
-   - Write 'alpha' not '\alpha'
-   - Use simple functions like 'exp(x)' not 'e^x'
-   - No \[ or \] or \frac notation
-
-Just ensure your equation uses Q(t) and R(t) terms.
-
-Response format:
-EQUATION: [your equation]
-PARAMETERS: [your parameters]
-THEORETICAL_BASIS: [your idea]
-
-Be creative and explore interesting mathematical structures!"""
 
     async def aggregate_thoughts_node(self, state: AgentState, thoughts: List[ModelState]) -> AgentState:
         """Node for combining multiple thoughts."""
@@ -291,6 +263,72 @@ Be creative and explore interesting mathematical structures!"""
             logger.error(f"Error in update_knowledge_node: {e}")
             return state
 
+    async def check_convergence_node(self, state: AgentState) -> AgentState:
+        """Check convergence with enhanced criteria."""
+        try:
+            # Check if we have enough history
+            if len(state['thought_history']) > 5:
+                # Get recent scores
+                recent_scores = []
+                for t in state['thought_history'][-5:]:
+                    if hasattr(t, 'score') and t.score is not None:
+                        recent_scores.append(t.score)
+                
+                # Check for score convergence
+                if recent_scores and (max(recent_scores) - min(recent_scores) < 0.01):
+                    # Check for mechanism diversity
+                    recent_mechanisms = set()
+                    for thought in state['thought_history'][-5:]:
+                        mechanisms = self._extract_mechanisms(thought)
+                        recent_mechanisms.update(mechanisms)
+                    
+                    # If we've explored multiple mechanisms and scores converged
+                    if len(recent_mechanisms) >= 2:
+                        state['next_step'] = 'complete'
+                        logger.info("Convergence detected")
+                    
+            return state
+            
+        except Exception as e:
+            logger.error(f"Error checking convergence: {e}")
+            return state
+
+    def _create_hypothesis_prompt(self, state: AgentState) -> str:
+        """Create prompt encouraging creative exploration."""
+        current_model = state["current_model"]
+        
+        return f"""Explore creative mathematical models for learning and decision-making.
+
+Current model:
+{current_model.equations[0]}
+
+Current parameters:
+{current_model.parameters}
+
+You can:
+- Combine multiple learning mechanisms
+- Add new parameters with any values
+- Try non-linear interactions
+- Experiment with temporal dependencies
+- Add memory effects
+- Consider additional mechanisms
+- Explore adaptation and meta-learning
+KEY FORMAT REQUIREMENTS:
+- All parameters must be plain numeric values. For example, do not write "2 * pi / 25", just approximate it to 0.2513274.
+Use PLAIN text notation (not LaTeX)!!!!!!!!!
+   - Write 'alpha' not '\\alpha'
+   - Use simple functions like 'exp(x)' not 'e^x'
+   - No \\[ or \\] or \\frac notation
+
+Just ensure your equation uses Q(t) and R(t) terms.
+
+Response format:
+EQUATION: [your equation]
+PARAMETERS: [your parameters]
+THEORETICAL_BASIS: [your idea]
+
+Be creative and explore interesting mathematical structures!"""
+
     def _parse_llm_response(self, text: str) -> Optional[ModelState]:
         """Parse LLM response into a ModelState."""
         try:
@@ -351,84 +389,21 @@ Be creative and explore interesting mathematical structures!"""
             logger.error(f"Error parsing LLM response: {e}")
             logger.info(f"Problematic text:\n{text}")
             return None
-    
-    def _safe_parse_parameters(self, params_str: str) -> Dict[str, float]:
-        """Parse parameter string into dictionary."""
-        try:
-            # Debug logging
-            logger.debug(f"Parsing parameters string: {params_str}")
-            
-            # Clean up the string
-            params_str = params_str.strip()
-            if not params_str:
-                return {}
-
-            # If string is just "PARAMETERS:", return empty dict (>>>>>?)
-            if params_str.upper() == "PARAMETERS:":
-                return {}
-
-            # Remove "PARAMETERS:" if present
-            if params_str.upper().startswith("PARAMETERS:"):
-                params_str = params_str[len("PARAMETERS:"):].strip()
-
-            # Add braces if missing, this helps
-            if not params_str.startswith('{'):
-                params_str = '{' + params_str
-            if not params_str.endswith('}'):
-                params_str += '}'
-
-            # Clean up the string - normalize spaces and quotes
-            params_str = re.sub(r'\s*:\s*', ':', params_str)
-            params_str = re.sub(r'\s*,\s*', ',', params_str)
-
-            # Remove outer braces and split into pairs
-            content = params_str.strip('{}')
-            if not content:
-                return {}
-
-            pairs = content.split(',')
-            parameters = {}
-            
-            for pair in pairs:
-                if not pair or ':' not in pair:
-                    continue
-                
-                try:
-                    key, value = pair.split(':', 1)
-                    key = key.strip().strip('"').strip("'")
-                    
-                    # Extract the numeric value, handling scientific notation
-                    # This regex matches normal numbers and scientific notation
-                    match = re.search(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?', value)
-                    if match:
-                        value = float(match.group())
-                        parameters[key] = value
-                except ValueError as ve:
-                    logger.warning(f"Could not parse value in pair '{pair}': {ve}")
-                except Exception as e:
-                    logger.warning(f"Error processing pair '{pair}': {e}")
-
-            logger.debug(f"Successfully parsed parameters: {parameters}")
-            return parameters
-            
-        except Exception as e:
-            logger.error(f"Error parsing parameters: {e}")
-            return {}
 
     def validate_equation(self, state: ModelState) -> bool:
-            """Minimal validation to allow creative exploration."""
-            try:
-                equation = state.equations[0]
-                
-                # Only check that we have Q(t) and R(t) and balanced parentheses becazuse otherwise everything gets too tricky
-                basic_terms_present = 'Q(t' in equation and 'R(t' in equation
-                balanced_parens = equation.count('(') == equation.count(')')
-                
-                return basic_terms_present and balanced_parens
-                
-            except Exception as e:
-                logger.error(f"Error validating equation: {e}")
-                return False
+        """Minimal validation to allow creative exploration."""
+        try:
+            equation = state.equations[0]
+            
+            # Only check that we have Q(t) and R(t) and balanced parentheses
+            basic_terms_present = 'Q(t' in equation and 'R(t' in equation
+            balanced_parens = equation.count('(') == equation.count(')')
+            
+            return basic_terms_present and balanced_parens
+            
+        except Exception as e:
+            logger.error(f"Error validating equation: {e}")
+            return False
         
     def _extract_mechanisms(self, state: ModelState) -> List[str]:
         """Extract cognitive mechanisms from model state."""
@@ -443,7 +418,6 @@ Be creative and explore interesting mathematical structures!"""
                 "working_memory": ["wm", "memory", "gamma"],
                 "prediction_error": ["pe", "error", "r(t)-q(t)"]
             }
-            
             for mechanism, patterns in mechanism_patterns.items():
                 if any(pattern in equation for pattern in patterns):
                     mechanisms.append(mechanism)
@@ -453,36 +427,6 @@ Be creative and explore interesting mathematical structures!"""
         except Exception as e:
             logger.error(f"Error extracting mechanisms: {e}")
             return []
-
-    async def check_convergence_node(self, state: AgentState) -> AgentState:
-        """Check convergence with enhanced criteria."""
-        try:
-            # Check if we have enough history
-            if len(state['thought_history']) > 5:
-                # Get recent scores
-                recent_scores = [
-                    t.score for t in state['thought_history'][-5:]
-                    if t.score is not None
-                ]
-                
-                # Check for score convergence
-                if recent_scores and (max(recent_scores) - min(recent_scores) < 0.01):
-                    # Check for mechanism diversity
-                    recent_mechanisms = set()
-                    for thought in state['thought_history'][-5:]:
-                        mechanisms = self._extract_mechanisms(thought)
-                        recent_mechanisms.update(mechanisms)
-                    
-                    # If we've explored multiple mechanisms and scores converged
-                    if len(recent_mechanisms) >= 2:
-                        state['next_step'] = 'complete'
-                        logger.info("Convergence detected")
-                    
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error checking convergence: {e}")
-            return state
 
     def _update_thought_tracking(self, state: AgentState):
         """Update thought tracking with performance data."""
@@ -554,7 +498,10 @@ Be creative and explore interesting mathematical structures!"""
                 if nx.has_path(self.thought_graph, root, model.id):
                     paths = list(nx.all_simple_paths(self.thought_graph, root, model.id))
                     if paths:
-                        max_path_length = max(max_path_length, max(len(path) for path in paths))
+                        max_path_length = max(
+                            max_path_length, 
+                            max(len(path) for path in paths)
+                        )
             
             metrics = {
                 "volume": volume,

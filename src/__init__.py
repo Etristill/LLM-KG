@@ -6,7 +6,8 @@ from .mcts_kg import EnhancedMCTS, MCTSNode
 from .graph_workflow import ModelDiscoveryGraph, AgentState
 from .evaluation import SimpleEvaluator
 from .llm import EnhancedLLMInterface
-from .transformations import ThoughtTransformations  # New import for GoT transformations
+from .transformations import ThoughtTransformations
+from .llm_client import UnifiedLLMClient  
 
 __all__ = [
     'ModelState',
@@ -17,5 +18,7 @@ __all__ = [
     'AgentState',
     'SimpleEvaluator',
     'EnhancedLLMInterface',
-    'ThoughtTransformations'
+    'ThoughtTransformations',
+    'UnifiedLLMClient'  
+
 ]
