@@ -87,13 +87,13 @@ class EnhancedKnowledgeGraph:
         # read csv file into pandas df
         df = pd.read_csv(file_location)
 
-        exp_participant_pairs = df.drop_duplicates(subset=['experiment_id', 'session'], keep=False)
+        exp_participant_pairs = df.drop_duplicates(subset=['experiment_id', 'session'])
 
         for index, row in exp_participant_pairs.iterrows():
 
             # add experiment
             try:
-                exp_node_name = "Experiment " + row['experiment_id']
+                exp_node_name = "Experiment " + str(row['experiment_id'])
                 # check if experiment node exists
                 if not (self.experiment_graph.has_node(exp_node_name) and
                                                       self.experiment_graph.nodes[exp_node_name].get('type') == 'experiment'):
@@ -102,10 +102,10 @@ class EnhancedKnowledgeGraph:
                         type = "experiment")
 
                     # add experimental factors
-                    self.experiment_graph.add_edge('n_trials', exp_node_name, value=row['n_trials'])
-                    self.experiment_graph.add_edge('p_init', exp_node_name, value=row['p_init'])
-                    self.experiment_graph.add_edge('sigma', exp_node_name, value=row['sigma'])
-                    self.experiment_graph.add_edge('hazard_rate', exp_node_name, value=row['hazard_rate'])
+                    self.experiment_graph.add_edge('n_trials', exp_node_name, relationship_type="has " + str(row['n_trials']))
+                    self.experiment_graph.add_edge('p_init', exp_node_name, relationship_type="has " + str(row['p_init']))
+                    self.experiment_graph.add_edge('sigma', exp_node_name, relationship_type="has " + str(row['sigma']))
+                    self.experiment_graph.add_edge('hazard_rate', exp_node_name, relationship_type="has " + str(row['hazard_rate']))
 
             except Exception as e:
                 logger.error(f"Error adding node {exp_node_name}: {e}")
@@ -113,7 +113,7 @@ class EnhancedKnowledgeGraph:
 
             # add participant
             try:
-                participant_node_name = "Participant " + row['session']
+                participant_node_name = "Participant " + str(row['session'])
                 # check if participant node exists
                 if not (self.experiment_graph.has_node(participant_node_name) and
                                                        self.experiment_graph.nodes[participant_node_name].get(
